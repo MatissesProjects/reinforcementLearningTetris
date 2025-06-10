@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tetris AI Training Environment</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Roboto Mono', monospace;
+            background-color: #1a202c; /* bg-gray-900 */
+            color: #e2e8f0; /* text-gray-200 */
+        }
+        .game-container canvas {
+            background-color: #000;
+            border: 2px solid #4a5568; /* border-gray-600 */
+            border-radius: 0.5rem;
+        }
+        .info-panel {
+            background-color: #2d3748; /* bg-gray-800 */
+            border-radius: 0.5rem;
+            padding: 1rem;
+        }
+        .info-panel canvas {
+            background-color: #1a202c; /* bg-gray-900 */
+            border: 1px solid #4a5568; /* border-gray-600 */
+            border-radius: 0.25rem;
+        }
+        .reset-btn {
+            background-color: #a0aec0; /* bg-gray-400 */
+            color: #1a202c; /* text-gray-900 */
+            font-size: 0.8rem;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            margin-top: 0.5rem;
+            transition: background-color 0.2s;
+        }
+        .reset-btn:hover {
+            background-color: #cbd5e0; /* bg-gray-300 */
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-8">
+
+    <div class="max-w-7xl mx-auto">
+        <header class="text-center mb-8">
+            <h1 class="text-3xl sm:text-4xl font-bold text-white">Tetris AI Training Environment</h1>
+            <p class="text-gray-400 mt-2">Multiple game instances for parallel agent training.</p>
+        </header>
+
+        <div id="main-controls" class="text-center mb-8 bg-gray-800 p-4 rounded-lg shadow-lg">
+            <h2 class="text-xl font-bold mb-2">Master Controls</h2>
+            <p class="text-sm text-gray-400 mb-4">These controls affect all running game instances.</p>
+            <button id="start-all-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200">Start All</button>
+            <button id="stop-all-btn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200 ml-2">Stop All</button>
+            <div class="mt-4">
+                <label for="num-instances" class="mr-2">Number of Instances:</label>
+                <input type="number" id="num-instances" value="2" min="1" max="12" class="bg-gray-700 text-white rounded px-2 py-1 w-20 text-center">
+                <button id="generate-instances-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200 ml-2">Generate</button>
+            </div>
+             <p id="seed-display" class="text-xs text-gray-500 mt-2"></p>
+        </div>
+
+        <div id="game-instances-container" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
+            <!-- Game instances will be dynamically inserted here -->
+        </div>
+    </div>
+
+    <script>
+    // --- TETRIS GAME ENGINE ---
+
+    const COLS = 10;
+    const ROWS = 20;
+    const HIDDEN_ROWS = 20;
+    const BLOCK_SIZE = 30;
+
+    const COLORS = { 'T':'#a000f0', 'I':'#00f0f0', 'O':'#f0f000', 'L':'#f0a000', 'J':'#0000f0', 'S':'#00f000', 'Z':'#f00000', 'GHOST':'rgba(255, 255, 255, 0.2)' };
+    const SHAPES = {
+        'I': [ [[0,0,0,0],[2,2,2,2],[0,0,0,0],[0,0,0,0]], [[0,0,2,0],[0,0,2,0],[0,0,2,0],[0,0,2,0]], [[0,0,0,0],[0,0,0,0],[2,2,2,2],[0,0,0,0]], [[0,2,0,0],[0,2,0,0],[0,2,0,0],[0,2,0,0]] ],
+        'J': [ [[5,0,0],[5,5,5],[0,0,0]], [[0,5,5],[0,5,0],[0,5,0]], [[0,0,0],[5,5,5],[0,0,5]], [[0,5,0],[0,5,0],[5,5,0]] ],
+        'L': [ [[0,0,4],[4,4,4],[0,0,0]], [[0,4,0],[0,4,0],[0,4,4]], [[0,0,0],[4,4,4],[4,0,0]], [[4,4,0],[0,4,0],[0,4,0]] ],
+        'O': [ [[0,3,3,0],[0,3,3,0],[0,0,0,0]] ],
+        'S': [ [[0,6,6],[6,6,0],[0,0,0]], [[0,6,0],[0,6,6],[0,0,6]], [[0,0,0],[0,6,6],[6,6,0]], [[6,0,0],[6,6,0],[0,6,0]] ],
+        'T': [ [[0,1,0],[1,1,1],[0,0,0]], [[0,1,0],[0,1,1],[0,1,0]], [[0,0,0],[1,1,1],[0,1,0]], [[0,1,0],[1,1,0],[0,1,0]] ],
+        'Z': [ [[7,7,0],[0,7,7],[0,0,0]], [[0,0,7],[0,7,7],[0,7,0]], [[0,0,0],[7,7,0],[0,7,7]], [[0,7,0],[7,7,0],[7,0,0]] ]
+    };
+    const KICK_DATA = {
+        'JLSTZ': [ [[0,0],[-1,0],[-1,1],[0,-2],[-1,-2]], [[0,0],[1,0],[1,-1],[0,2],[1,2]], [[0,0],[1,0],[1,-1],[0,2],[1,2]], [[0,0],[-1,0],[-1,1],[0,-2],[-1,-2]], [[0,0],[1,0],[1,1],[0,-2],[1,-2]], [[0,0],[-1,0],[-1,-1],[0,2],[-1,2]], [[0,0],[-1,0],[-1,-1],[0,2],[-1,2]], [[0,0],[1,0],[1,1],[0,-2],[1,-2]] ],
+        'I': [ [[0,0],[-2,0],[1,0],[-2,-1],[1,2]], [[0,0],[2,0],[-1,0],[2,1],[-1,-2]], [[0,0],[-1,0],[2,0],[-1,2],[2,-1]], [[0,0],[1,0],[-2,0],[1,-2],[-2,1]], [[0,0],[2,0],[-1,0],[2,1],[-1,-2]], [[0,0],[-2,0],[1,0],[-2,-1],[1,2]], [[0,0],[1,0],[-2,0],[1,-2],[-2,1]], [[0,0],[-1,0],[2,0],[-1,2],[2,-1]] ]
+    };
+    const PIECE_MAP = {1:'T',2:'I',3:'O',4:'L',5:'J',6:'S',7:'Z'}; const PIECE_KEYS = Object.keys(SHAPES).filter(k=>k!=='O');
+    const DAS = 10; const ARR = 0; const SDF_MULTIPLIER = 37; const LOCK_DELAY_DURATION = 500; const MAX_LOCK_DELAY_RESETS = 15;
+    class SeededRandom { constructor(seed){this.seed=seed;} next(){this.seed=(this.seed*9301+49297)%233280;return this.seed/233280;} }
+    class TetrisGame {
+        constructor(containerElement,id,seed){this.id=id;this.container=containerElement;this.rng=new SeededRandom(seed);this.lastTime=0;this.initUI();this.reset();}
+        initUI() {
+            // FIXED LAYOUT: The container passed in is now the direct flex parent.
+            this.container.innerHTML = `
+                <h2 class="text-xl font-bold mb-4 text-center w-full">Agent ${this.id}</h2>
+                <div class="flex flex-col sm:flex-row gap-4 w-full">
+                    <div class="info-panel flex-shrink-0 w-full sm:w-40 text-center order-2 sm:order-1">
+                        <div class="mb-4"><h3 class="text-lg font-bold">HOLD</h3><div class="h-24 flex items-center justify-center mt-2"><canvas id="hold-canvas-${this.id}" width="80" height="80"></canvas></div></div>
+                        <div><h3 class="text-lg font-bold mb-2">STATS</h3><p>Score: <span id="score-${this.id}">0</span></p><p>Lines: <span id="lines-${this.id}">0</span></p><p>Level: <span id="level-${this.id}">1</span></p></div>
+                        <button id="reset-btn-${this.id}" class="reset-btn">Reset Game</button>
+                    </div>
+                    <div class="game-container relative order-1 sm:order-2">
+                        <canvas id="game-canvas-${this.id}" width="${COLS*BLOCK_SIZE}" height="${ROWS*BLOCK_SIZE}"></canvas>
+                        <div id="game-over-${this.id}" class="absolute inset-0 bg-black/75 flex items-center justify-center text-2xl font-bold text-red-500" style="display: none;">GAME OVER</div>
+                    </div>
+                    <div class="info-panel flex-shrink-0 w-full sm:w-40 text-center order-3">
+                        <h3 class="text-lg font-bold">NEXT</h3>
+                        <div id="next-queue-${this.id}" class="flex flex-col items-center gap-2 mt-2"></div>
+                    </div>
+                </div>`;
+            this.canvas=document.getElementById(`game-canvas-${this.id}`);this.ctx=this.canvas.getContext('2d');this.ctx.scale(BLOCK_SIZE,BLOCK_SIZE);
+            this.holdCtx=document.getElementById(`hold-canvas-${this.id}`).getContext('2d');
+            this.nextQueueContainer=document.getElementById(`next-queue-${this.id}`);this.nextCanvases=[];
+            for(let i=0;i<5;i++){const c=document.createElement('canvas');c.width=80;c.height=80;this.nextQueueContainer.appendChild(c);this.nextCanvases.push(c.getContext('2d'));}
+            this.scoreEl=document.getElementById(`score-${this.id}`);this.linesEl=document.getElementById(`lines-${this.id}`);this.levelEl=document.getElementById(`level-${this.id}`);this.gameOverEl=document.getElementById(`game-over-${this.id}`);
+            document.getElementById(`reset-btn-${this.id}`).addEventListener('click',()=>this.reset());
+            document.querySelector(`#instance-wrapper-${this.id} h2`).textContent = `Agent ${this.id}`;
+        }
+        reset(){this.isRunning=false;this.isGameOver=false;this.score=0;this.linesCleared=0;this.level=1;this.dropCounter=0;this.dasCounter=0;this.arrCounter=0;this.leftHeld=false;this.rightHeld=false;this.softDropActive=false;this.lockDelayTimer=0;this.isTouchingFloor=false;this.lockDelayResets=0;this.grid=this.createGrid(COLS,ROWS+HIDDEN_ROWS);this.pieceQueue=[];this.fillQueue();this.spawnNewPiece();this.holdPiece=null;this.canHold=true;this.updateStats();this.gameOverEl.style.display='none';this.draw();}
+        createGrid(cols,rows){return Array.from({length:rows},()=>Array(cols).fill(0));}
+        fillQueue(){const bag=[...PIECE_KEYS,'O'];while(bag.length){this.pieceQueue.push(bag.splice(Math.floor(this.rng.next()*bag.length),1)[0]);}}
+        spawnNewPiece(type=null){if(!type){if(this.pieceQueue.length<7)this.fillQueue();type=this.pieceQueue.shift();}
+            this.activePiece={type:type,rotation:0,x:3,y:HIDDEN_ROWS-2};if(type==='O')this.activePiece.x=4;if(type==='I')this.activePiece.y=HIDDEN_ROWS-3;
+            this.activePiece.shape=SHAPES[this.activePiece.type][this.activePiece.rotation];this.isTouchingFloor=false;this.lockDelayResets=0;
+            if(this.checkCollision(this.activePiece.shape,this.activePiece.x,this.activePiece.y))this.gameOver();}
+        checkCollision(shape,x,y){for(let r=0;r<shape.length;r++)for(let c=0;c<shape[r].length;c++)if(shape[r][c]!==0){const nX=x+c;const nY=y+r;if(nX<0||nX>=COLS||nY>=this.grid.length||(this.grid[nY]&&this.grid[nY][nX]!==0))return true;}return false;}
+        lockPiece(){this.activePiece.shape.forEach((row,r)=>row.forEach((v,c)=>{if(v!==0)this.grid[this.activePiece.y+r][this.activePiece.x+c]=v;}));this.clearLines();this.spawnNewPiece();this.canHold=true;}
+        clearLines(){let l=[];for(let r=this.grid.length-1;r>=0;r--)if(this.grid[r].every(c=>c!==0))l.push(r);
+            if(l.length>0){for(const r of l)this.grid.splice(r,1);for(let i=0;i<l.length;i++)this.grid.unshift(new Array(COLS).fill(0));
+                const p=[0,100,300,500,800];this.score+=p[l.length]*this.level;this.linesCleared+=l.length;this.level=Math.floor(this.linesCleared/10)+1;this.updateStats();}}
+        move(dir){if(!this.checkCollision(this.activePiece.shape,this.activePiece.x+dir,this.activePiece.y)){this.activePiece.x+=dir;this.resetLockDelay();return true;}return false;}
+        rotate(dir=1){const p=this.activePiece;if(p.type==='O')return false;const from=p.rotation;const to=(from+dir+4)%4;
+            const kickTable=(p.type==='I')?KICK_DATA.I:KICK_DATA.JLSTZ;const kickIndex=dir===1?from*2:to*2+1;
+            for(const t of kickTable[kickIndex]){const[x,y]=t;if(!this.checkCollision(SHAPES[p.type][to],p.x+x,p.y-y)){p.x+=x;p.y-=y;p.rotation=to;p.shape=SHAPES[p.type][to];this.resetLockDelay();return true;}}return false;}
+        resetLockDelay(){if(this.isTouchingFloor&&this.lockDelayResets<MAX_LOCK_DELAY_RESETS){this.lockDelayTimer=LOCK_DELAY_DURATION;this.lockDelayResets++;}}
+        drop(){if(!this.checkCollision(this.activePiece.shape,this.activePiece.x,this.activePiece.y+1)){this.activePiece.y++;this.dropCounter=0;this.isTouchingFloor=false;}else{this.isTouchingFloor=true;if(this.lockDelayTimer<=0)this.lockDelayTimer=LOCK_DELAY_DURATION;}}
+        hardDrop(){while(!this.checkCollision(this.activePiece.shape,this.activePiece.x,this.activePiece.y+1)){this.activePiece.y++;this.score+=2;}this.lockPiece();this.updateStats();}
+        hold(){if(!this.canHold)return;const h=this.holdPiece?this.holdPiece.type:null;this.holdPiece={type:this.activePiece.type};this.spawnNewPiece(h);this.canHold=false;this.draw();}
+        update(dT){if(!this.isRunning||this.isGameOver)return;this.handleHorizontalMovement();if(this.isTouchingFloor){if((this.lockDelayTimer-=dT)<=0)this.lockPiece();}else{const dI=1000/this.level;let cDI=this.softDropActive?dI/SDF_MULTIPLIER:dI;if((this.dropCounter+=dT)>cDI)this.drop();}this.draw();}
+        handleHorizontalMovement(){if(this.leftHeld===this.rightHeld){this.dasCounter=0;return;}this.dasCounter++;if(this.dasCounter>DAS)if(this.arrCounter++>=ARR){this.arrCounter=0;this.move(this.rightHeld?1:-1);}}
+        handleKeyDown(e){if(!this.isRunning||this.isGameOver)return;const k=['ArrowLeft','ArrowRight','ArrowDown','ArrowUp','x','X','z','Z',' ','Shift','c','C'];if(k.includes(e.key))e.preventDefault();
+            switch(e.key){case'ArrowLeft':if(!this.leftHeld){this.move(-1);this.dasCounter=0;}this.leftHeld=true;break;case'ArrowRight':if(!this.rightHeld){this.move(1);this.dasCounter=0;}this.rightHeld=true;break;
+            case'ArrowDown':this.softDropActive=true;this.resetLockDelay();break;case'ArrowUp':case'x':case'X':this.rotate(1);break;case'z':case'Z':this.rotate(-1);break;case' ':this.hardDrop();break;case'Shift':case'c':case'C':this.hold();break;}}
+        handleKeyUp(k){switch(k){case'ArrowLeft':this.leftHeld=false;break;case'ArrowRight':this.rightHeld=false;break;case'ArrowDown':this.softDropActive=false;break;}}
+        draw(){this.ctx.fillStyle='#000';this.ctx.fillRect(0,0,this.canvas.width,this.canvas.height);this.drawMatrix(this.grid,0,-HIDDEN_ROWS,this.ctx);this.drawGhostPiece();
+            if(this.activePiece)this.drawMatrix(this.activePiece.shape,this.activePiece.x,this.activePiece.y-HIDDEN_ROWS,this.ctx,this.activePiece.type);this.drawHoldPiece();this.drawNextQueue();}
+        drawMatrix(m,oX,oY,c,t){m.forEach((r,y)=>r.forEach((v,x)=>{if(v!==0){c.fillStyle=t?COLORS[t]:COLORS[PIECE_MAP[v]];c.fillRect(x+oX,y+oY,1,1);}}));}
+        drawGhostPiece(){if(!this.activePiece)return;const g={y:this.activePiece.y,x:this.activePiece.x,shape:this.activePiece.shape};while(!this.checkCollision(g.shape,g.x,g.y+1))g.y++;
+            this.ctx.globalAlpha=0.3;this.drawMatrix(g.shape,g.x,g.y-HIDDEN_ROWS,this.ctx,this.activePiece.type);this.ctx.globalAlpha=1.0;}
+        drawPieceInPreview(c,p){c.clearRect(0,0,80,80);if(p){const s=SHAPES[p.type][0];const sc=(p.type==='I'||p.type==='O')?18:20;const w=s[0].length*sc;const h=s.length*sc;const x=(80-w)/2;const y=(80-h)/2;c.fillStyle=COLORS[p.type];
+            s.forEach((r,rI)=>r.forEach((v,cI)=>{if(v)c.fillRect(x+cI*sc,y+rI*sc,sc-1,sc-1);}));}}
+        drawHoldPiece(){this.drawPieceInPreview(this.holdCtx,this.holdPiece);}
+        drawNextQueue(){this.nextCanvases.forEach((c,i)=>{const t=this.pieceQueue[i];if(t)this.drawPieceInPreview(c,{type:t});else c.clearRect(0,0,80,80);});}
+        updateStats(){this.scoreEl.textContent=this.score;this.linesEl.textContent=this.linesCleared;this.levelEl.textContent=this.level;}
+        gameOver(){this.isRunning=false;this.isGameOver=true;this.gameOverEl.style.display='flex';console.log(`Game ${this.id} Over! Final Score: ${this.score}`);}
+        start(){if(this.isGameOver)this.reset();if(!this.isRunning){this.isRunning=true;this.lastTime=0;requestAnimationFrame(this.gameLoop.bind(this));}}
+        stop(){this.isRunning=false;}
+        gameLoop(t){if(!this.isRunning)return;const dT=t-(this.lastTime||t);this.lastTime=t;this.update(dT);requestAnimationFrame(this.gameLoop.bind(this));}
+        getPixelData(){return this.canvas.toDataURL();}
+        getStructuredState(){return {grid:this.grid.slice(HIDDEN_ROWS),activePiece:this.activePiece?this.activePiece.type:null,activePiecePosition:this.activePiece?{x:this.activePiece.x,y:this.activePiece.y-HIDDEN_ROWS}:null,nextPieces:this.pieceQueue.slice(0,5),holdPiece:this.holdPiece?this.holdPiece.type:null,canHold:this.canHold,score:this.score,lines:this.linesCleared,level:this.level,isGameOver:this.isGameOver};}
+    }
+
+    let gameInstances = [];
+    let humanPlayerKeyListeners = null;
+    function createInstanceElement(id) {
+        // This is the main wrapper for one agent instance
+        const wrapper = document.createElement('div');
+        wrapper.className = 'instance-wrapper bg-gray-800/50 p-4 rounded-lg shadow-md flex flex-wrap justify-center'; // Make it a flex container
+        wrapper.id = `instance-wrapper-${id}`;
+        // The game content will be injected by the TetrisGame class
+        return wrapper;
+    }
+    function generateInstances() {
+        const instancesContainer = document.getElementById('game-instances-container');
+        const numInstancesInput = document.getElementById('num-instances');
+        const seedDisplay = document.getElementById('seed-display');
+        gameInstances.forEach(game => game.stop()); instancesContainer.innerHTML = ''; gameInstances = [];
+        if (humanPlayerKeyListeners) { document.removeEventListener('keydown', humanPlayerKeyListeners.down); document.removeEventListener('keyup', humanPlayerKeyListeners.up); }
+        const seed = Date.now(); seedDisplay.textContent = `Current Seed: ${seed}`;
+        const count = parseInt(numInstancesInput.value, 10);
+        for(let i = 1; i <= count; i++) {
+            const instanceEl = createInstanceElement(i); 
+            instancesContainer.appendChild(instanceEl);
+            const game = new TetrisGame(instanceEl, i, seed); // Pass the wrapper element directly
+            gameInstances.push(game);
+        }
+        if (gameInstances.length > 0) {
+            const humanPlayer = gameInstances[0];
+            humanPlayerKeyListeners = { down: (e) => humanPlayer.handleKeyDown(e), up: (e) => humanPlayer.handleKeyUp(e.key) };
+            document.addEventListener('keydown', humanPlayerKeyListeners.down); document.addEventListener('keyup', humanPlayerKeyListeners.up);
+            document.querySelector('#instance-wrapper-1 h2').textContent += " (Player)";
+        }
+    }
+    document.getElementById('start-all-btn').addEventListener('click', () => gameInstances.forEach(game => game.start()));
+    document.getElementById('stop-all-btn').addEventListener('click', () => gameInstances.forEach(game => game.stop()));
+    document.getElementById('generate-instances-btn').addEventListener('click', generateInstances);
+    window.onload = generateInstances;
+    </script>
+</body>
+</html>
