@@ -9,3 +9,5 @@ reinforcement learning is a way of doing learning without a human in the loop, q
 https://github.com/MatissesProjects/reinforcementLearningTetris
 
 ![machineLearning](machineLearningTetris.jpg)
+
+![layout](currentLayout.png)
