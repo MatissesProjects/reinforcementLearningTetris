@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tetris AI Training Environment - Expanded GA</title>
+    <title>Tetris AI Training Environment - Neuroevolution</title>
     <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -29,7 +29,7 @@
             border: 1px solid #4a5568;
             border-radius: 0.25rem;
         }
-        #weights-display, #parent-weights-input {
+        #dna-display, #parent-dna-input {
             background-color: #1a202c;
             border: 1px solid #4a5568;
             font-size: 0.75rem;
@@ -83,7 +83,7 @@
     <div class="max-w-screen-2xl mx-auto">
         <header class="text-center mb-8">
             <h1 class="text-3xl sm:text-4xl font-bold text-white">Tetris AI Training Environment</h1>
-            <p class="text-gray-400 mt-2">Expanded Genetic Algorithm Playground</p>
+            <p class="text-gray-400 mt-2">Neuroevolution Playground</p>
         </header>
 
         <div id="main-controls" class="text-center mb-8 bg-gray-800 p-4 rounded-lg shadow-lg">
@@ -113,10 +113,10 @@
                         <span id="generation-display" class="font-bold text-lg text-teal-300">0</span>
                     </div>
                     <button id="generate-instances-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg w-full mt-4">Generate New Population</button>
-                    <button id="permutate-btn" class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-4 rounded-lg w-full mt-2">Generate from Parent Weights</button>
-                    <textarea id="parent-weights-input" class="mt-4 p-2 rounded-md w-full" placeholder="Paste parent agent's weights (DNA) here..."></textarea>
-                    <button id="extract-weights-btn" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg w-full mt-2">Extract Best Agent's Weights</button>
-                    <div id="weights-display" class="mt-2 p-2 rounded-md text-left hidden"></div>
+                    <button id="permutate-btn" class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-4 rounded-lg w-full mt-2">Generate from Parent DNA</button>
+                    <textarea id="parent-dna-input" class="mt-4 p-2 rounded-md w-full" placeholder="Paste parent agent's DNA here..."></textarea>
+                    <button id="extract-dna-btn" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg w-full mt-2">Extract Best Agent's DNA</button>
+                    <div id="dna-display" class="mt-2 p-2 rounded-md text-left hidden"></div>
                 </div>
                  <div>
                      <h3 class="text-lg font-bold mb-2">AI Parameters</h3>
@@ -193,8 +193,8 @@
                             <p>Level: <span id="level-${this.id}">1</span></p>
                             <p>Combo: <span id="combo-${this.id}">0</span></p>
                             <p>B2B: <span id="b2b-${this.id}">0</span></p>
+                            <div id="agent-dna-display-${this.id}" class="mt-2 text-left"></div>
                         </div>
-                        <div id="heuristic-display-${this.id}" class="mt-4 text-left"></div>
                         <button id="reset-btn-${this.id}" class="reset-btn mt-4 bg-gray-600 hover:bg-gray-700 text-white font-bold py-1 px-2 rounded">Reset</button>
                     </div>
                     <div class="game-container relative flex-grow">
@@ -206,7 +206,7 @@
                         <div id="next-queue-${this.id}" class="flex flex-col items-center gap-2 mt-2"></div>
                     </div>
                 </div>`;
-            this.canvas=document.getElementById(`game-canvas-${this.id}`);this.ctx=this.canvas.getContext("2d");this.ctx.scale(BLOCK_SIZE,BLOCK_SIZE);this.holdCtx=document.getElementById(`hold-canvas-${this.id}`).getContext("2d");this.nextQueueContainer=document.getElementById(`next-queue-${this.id}`);this.nextCanvases=[];for(let e=0;e<5;e++){const t=document.createElement("canvas");t.width=80,t.height=80,this.nextQueueContainer.appendChild(t),this.nextCanvases.push(t.getContext("2d"))}this.scoreEl=document.getElementById(`score-${this.id}`);this.linesEl=document.getElementById(`lines-${this.id}`);this.levelEl=document.getElementById(`level-${this.id}`);this.comboEl=document.getElementById(`combo-${this.id}`);this.b2bEl=document.getElementById(`b2b-${this.id}`);this.heuristicDisplayEl=document.getElementById(`heuristic-display-${this.id}`);this.gameOverEl=document.getElementById(`game-over-${this.id}`);document.getElementById(`reset-btn-${this.id}`).addEventListener("click",()=>this.reset());document.querySelector(`#instance-wrapper-${this.id} h2`).textContent=`Agent ${this.id}`
+            this.canvas=document.getElementById(`game-canvas-${this.id}`);this.ctx=this.canvas.getContext("2d");this.ctx.scale(BLOCK_SIZE,BLOCK_SIZE);this.holdCtx=document.getElementById(`hold-canvas-${this.id}`).getContext("2d");this.nextQueueContainer=document.getElementById(`next-queue-${this.id}`);this.nextCanvases=[];for(let e=0;e<5;e++){const t=document.createElement("canvas");t.width=80,t.height=80,this.nextQueueContainer.appendChild(t),this.nextCanvases.push(t.getContext("2d"))}this.scoreEl=document.getElementById(`score-${this.id}`);this.linesEl=document.getElementById(`lines-${this.id}`);this.levelEl=document.getElementById(`level-${this.id}`);this.comboEl=document.getElementById(`combo-${this.id}`);this.b2bEl=document.getElementById(`b2b-${this.id}`);this.dnaDisplayEl=document.getElementById(`agent-dna-display-${this.id}`);this.gameOverEl=document.getElementById(`game-over-${this.id}`);document.getElementById(`reset-btn-${this.id}`).addEventListener("click",()=>this.reset());document.querySelector(`#instance-wrapper-${this.id} h2`).textContent=`Agent ${this.id}`
         }
         reset(){this.isRunning=!1,this.isGameOver=!1,this.score=0,this.linesCleared=0,this.level=1,this.combo=0,this.b2b=0,this.finesseMoves=0,this.startTime=Date.now(),this.dropCounter=0,this.dasCounter=0,this.arrCounter=0,this.leftHeld=!1,this.rightHeld=!1,this.softDropActive=!1,this.lockDelayTimer=0,this.isTouchingFloor=!1,this.lockDelayResets=0,this.lastMoveWasRotation=!1,this.grid=this.createGrid(COLS,ROWS+HIDDEN_ROWS),this.pieceQueue=[],this.fillQueue(),this.spawnNewPiece(),this.holdPiece=null,this.canHold=!0,this.updateStats(),this.gameOverEl.style.display="none"; const wrapper = document.getElementById(`instance-wrapper-${this.id}`); if (wrapper) { wrapper.classList.remove('opacity-50'); } }
         createGrid(e,t){return Array.from({length:t},()=>Array(e).fill(0))}fillQueue(){const e=[...PIECE_KEYS];while(e.length){const t=e.splice(Math.floor(this.rng.next()*e.length),1)[0];this.pieceQueue.push(t)}}
@@ -246,7 +246,7 @@
         drop(){if(this.activePiece&&!this.checkCollision(this.activePiece.shape,this.activePiece.x,this.activePiece.y+1)){this.activePiece.y++,this.dropCounter=0,this.isTouchingFloor=!1}else{this.isTouchingFloor=!0;if(this.lockDelayTimer<=0)this.lockDelayTimer=LOCK_DELAY_DURATION}}
         hardDrop(){if(!this.activePiece)return;let cellsDropped=0;while(!this.checkCollision(this.activePiece.shape,this.activePiece.x,this.activePiece.y+1)){this.activePiece.y++,cellsDropped++};this.score+=2*cellsDropped;this.lockPiece()}
         hold(){if(!this.canHold||!this.activePiece)return;const heldType=this.holdPiece?this.holdPiece.type:null;this.holdPiece={type:this.activePiece.type};this.spawnNewPiece(heldType),this.canHold=!1,this.draw()}
-        update(e){if(!this.isRunning||this.isGameOver)return;this.handleHorizontalMovement();if(this.isTouchingFloor){this.lockDelayTimer-=e;if(this.lockDelayTimer<=0)this.lockPiece()}else{const t=1e3/this.level;const s=this.softDropActive?t/20:t;this.dropCounter+=e;if(this.dropCounter>s)this.drop()}this.draw(); if(this.agent) {this.agent.updateHeuristicDisplay(this.grid);}}
+        update(e){if(!this.isRunning||this.isGameOver)return;this.handleHorizontalMovement();if(this.isTouchingFloor){this.lockDelayTimer-=e;if(this.lockDelayTimer<=0)this.lockPiece()}else{const t=1e3/this.level;const s=this.softDropActive?t/20:t;this.dropCounter+=e;if(this.dropCounter>s)this.drop()}this.draw(); if(this.agent) {this.agent.updateAgentDisplay();}}
         handleHorizontalMovement(){if(this.leftHeld===this.rightHeld){this.dasCounter=0}else{this.dasCounter++;if(this.dasCounter>DAS){this.arrCounter++;if(this.arrCounter>=ARR){this.arrCounter=0;this.move(this.rightHeld?1:-1)}}}}
         handleKeyDown(e){if(this.isGameOver)return;const t=["ArrowLeft","ArrowRight","ArrowDown","ArrowUp","x","X","z","Z"," ","Shift","c","C"];t.includes(e.key)&&e.preventDefault();switch(e.key){case"ArrowLeft":this.leftHeld||(this.move(-1),this.dasCounter=0),this.leftHeld=!0;break;case"ArrowRight":this.rightHeld||(this.move(1),this.dasCounter=0),this.rightHeld=!0;break;case"ArrowDown":this.softDropActive=!0,this.resetLockDelay();break;case"ArrowUp":case"x":case"X":this.rotate(1);break;case"z":case"Z":this.rotate(-1);break;case" ":this.hardDrop();break;case"Shift":case"c":case"C":this.hold()}}
         handleKeyUp(e){switch(e.key){case"ArrowLeft":this.leftHeld=!1;break;case"ArrowRight":this.rightHeld=!1;break;case"ArrowDown":this.softDropActive=!1}}
@@ -269,57 +269,148 @@
         gameLoop(e){if(this.isRunning){const t=e-(this.lastTime||e);this.lastTime=e,this.update(t),requestAnimationFrame(this.gameLoop.bind(this))}}
     }
     
-    // --- AGENT (AI) CLASS ---
-    class Agent {
-        constructor(game, weights = null, shouldMutate = true) {
-            this.game = game; this.thinkTimeout = null; this.isThinking = false;
-            
-            const defaultWeights = {
-                aggregateHeight: -0.51,
-                maxHeight: -0.2, 
-                holes: -0.36,
-                coveredHoles: -0.8,
-                bumpiness: -0.18,
-                wells: -0.72,
-                rowTransitions: -0.1,
-                columnTransitions: -0.1,
-                linesClearedPower: 1.5,
-                combo: 3, 
-                holdBonus: 0.5,
-                finessePenalty: -0.2,
-                t_spin_single_bonus: 800,
-                t_spin_double_bonus: 1200,
-                t_spin_triple_bonus: 1600,
-                mini_t_spin_single_bonus: 100,
-                mini_t_spin_double_bonus: 200,
-                l_spin_bonus: 400,
-                j_spin_bonus: 400,
-                s_spin_bonus: 400,
-                z_spin_bonus: 400,
-            };
-            this.weights = {};
+    // --- NEURAL NETWORK & AGENT CLASSES ---
+    class Level {
+        constructor(inputCount, outputCount) {
+            this.inputs = new Array(inputCount); this.outputs = new Array(outputCount);
+            this.biases = new Array(outputCount); this.weights = [];
+            for (let i = 0; i < inputCount; i++) { this.weights[i] = new Array(outputCount); }
+            Level.#randomize(this, inputCount);
+        }
+        static #randomize(level, inputCount) {
+            for (let i = 0; i < level.inputs.length; i++) {
+                for (let j = 0; j < level.outputs.length; j++) {
+                    level.weights[i][j] = (Math.random() * 2 - 1) * Math.sqrt(1 / inputCount);
+                }
+            }
+            for (let i = 0; i < level.biases.length; i++) { level.biases[i] = 0; }
+        }
+        static feedForward(givenInputs, level) {
+            level.inputs = givenInputs;
+            for (let i = 0; i < level.outputs.length; i++) {
+                let sum = 0;
+                for (let j = 0; j < level.inputs.length; j++) { sum += level.inputs[j] * level.weights[j][i]; }
+                level.outputs[i] = Math.tanh(sum + level.biases[i]);
+            }
+            return level.outputs;
+        }
+    }
 
-            if (weights) {
-                 if (shouldMutate) {
-                    const mutationRate = parseFloat(document.getElementById("mutation-rate").value);
-                    const mutationAmount = parseFloat(document.getElementById("mutation-amount").value);
-                    for (const key in defaultWeights) {
-                        this.weights[key] = weights[key] !== undefined ? weights[key] : defaultWeights[key];
-                        if (Math.random() < mutationRate) {
-                           this.weights[key] *= (1 + (Math.random() * mutationAmount * 2 - mutationAmount));
-                        }
+    class NeuralNetwork {
+        constructor(layerConfigs) {
+            this.levels = [];
+            for (let i = 0; i < layerConfigs.length - 1; i++) {
+                this.levels.push(new Level(layerConfigs[i], layerConfigs[i+1]));
+            }
+        }
+        static feedForward(givenInputs, network) {
+            let outputs = givenInputs;
+            for (const level of network.levels) { outputs = Level.feedForward(outputs, level); }
+            return outputs;
+        }
+        static getDNA(network) {
+            const dna = { weights: [], biases: [] };
+            network.levels.forEach(level => {
+                dna.weights.push(...level.weights.flat());
+                dna.biases.push(...level.biases);
+            });
+            return dna;
+        }
+        static loadDNA(network, networkDNA) {
+            if(!networkDNA || !networkDNA.weights || !networkDNA.biases) return;
+            let weightIndex = 0; let biasIndex = 0;
+            for(const level of network.levels){
+                for(let i=0; i < level.weights.length; i++){
+                    for(let j=0; j < level.weights[i].length; j++){
+                        if(weightIndex < networkDNA.weights.length) level.weights[i][j] = networkDNA.weights[weightIndex++];
                     }
-                 } else {
-                    this.weights = { ...weights };
-                 }
-            } else { 
-                for (const key in defaultWeights) { 
-                    this.weights[key] = defaultWeights[key] + (Math.random() * Math.abs(defaultWeights[key] * 0.5) - Math.abs(defaultWeights[key] * 0.25));
+                }
+                for(let i=0; i < level.biases.length; i++){
+                    if(biasIndex < networkDNA.biases.length) level.biases[i] = networkDNA.biases[biasIndex++];
                 }
             }
         }
+        static mutate(network, mutationRate, mutationAmount) {
+            network.levels.forEach(level => {
+                for (let i = 0; i < level.biases.length; i++) {
+                    if (Math.random() < mutationRate) {
+                        level.biases[i] += (Math.random() * 2 - 1) * mutationAmount;
+                    }
+                }
+                for (let i = 0; i < level.weights.length; i++) {
+                    for (let j = 0; j < level.weights[i].length; j++) {
+                        if (Math.random() < mutationRate) {
+                            level.weights[i][j] += (Math.random() * 2 - 1) * mutationAmount;
+                        }
+                    }
+                }
+            });
+        }
+    }
+    
+    class Agent {
+        constructor(game, dna = null, shouldMutate = true) {
+            this.game = game; this.thinkTimeout = null; this.isThinking = false;
+            
+            this.baseWeights = {
+                aggregateHeight: -0.51, maxHeight: -0.2, holes: -0.36, coveredHoles: -0.8,
+                bumpiness: -0.18, wells: -0.72, rowTransitions: -0.1, columnTransitions: -0.1,
+                linesClearedPower: 1.5, combo: 3, holdBonus: 0.5, finessePenalty: -0.2,
+                t_spin_single_bonus: 800, t_spin_double_bonus: 1200, t_spin_triple_bonus: 1600,
+                mini_t_spin_single_bonus: 100, mini_t_spin_double_bonus: 200, l_spin_bonus: 400,
+                j_spin_bonus: 400, s_spin_bonus: 400, z_spin_bonus: 400
+            };
+            this.weightNames = Object.keys(this.baseWeights);
+            
+            if (dna) { this.dna = JSON.parse(JSON.stringify(dna)); }
+            else {
+                this.dna = {
+                    hiddenLayers: [10], 
+                    nn_influence: 0.05,
+                    networkDNA: null,
+                };
+            }
+            
+            const featureCount = 8;
+            const layerSizes = [featureCount, ...this.dna.hiddenLayers, this.weightNames.length];
+            this.brain = new NeuralNetwork(layerSizes);
+            
+            if(this.dna.networkDNA) {
+                 NeuralNetwork.loadDNA(this.brain, this.dna.networkDNA);
+            }
 
-        getWeights() { return this.weights; }
+            if (shouldMutate) { this.mutate(); }
+        }
+
+        mutate() {
+            const mutationRate = parseFloat(document.getElementById("mutation-rate").value);
+            const mutationAmount = parseFloat(document.getElementById("mutation-amount").value);
+            
+            NeuralNetwork.mutate(this.brain, mutationRate, mutationAmount);
+
+            if (Math.random() < mutationRate) {
+                this.dna.nn_influence *= (1 + (Math.random() * 2 - 1) * mutationAmount);
+                this.dna.nn_influence = Math.max(0, Math.min(1, this.dna.nn_influence));
+            }
+            
+            if (Math.random() < 0.03) {
+                const layerIndex = Math.floor(Math.random() * this.dna.hiddenLayers.length);
+                this.dna.hiddenLayers[layerIndex]++;
+                this.dna.networkDNA = null; 
+                console.log(`Agent ${this.game.id} added a neuron. New arch: [${this.dna.hiddenLayers}]`);
+            }
+            
+            if (Math.random() < 0.01) {
+                this.dna.hiddenLayers.push(5);
+                this.dna.networkDNA = null;
+                 console.log(`Agent ${this.game.id} added a layer. New arch: [${this.dna.hiddenLayers}]`);
+            }
+        }
+
+        getDNA() {
+            this.dna.networkDNA = NeuralNetwork.getDNA(this.brain);
+            return this.dna;
+        }
         
         start() { this.stop(); if (this.game.isRunning) this.think(); }
         stop() { if(this.thinkTimeout) clearTimeout(this.thinkTimeout); this.isThinking = false; }
@@ -331,8 +422,7 @@
             this.isThinking = true;
 
             try {
-                let chosenSequence = null; 
-                let useHold = false;
+                let chosenSequence = null; let useHold = false;
                 
                 const beamCurrent = this.beamSearch(this.game.grid, [this.game.activePiece.type, ...this.game.pieceQueue], this.game.combo, this.game.b2b);
                 let bestOverallScore = beamCurrent[0]?.score ?? -Infinity;
@@ -342,7 +432,7 @@
                     const piecesAfterHold = this.game.holdPiece ? [this.game.holdPiece.type, ...this.game.pieceQueue] : this.game.pieceQueue.slice(1);
                     if (piecesAfterHold.length > 0) {
                         beamHold = this.beamSearch(this.game.grid, piecesAfterHold, this.game.combo, this.game.b2b);
-                        const holdActionScore = (beamHold[0]?.score ?? -Infinity) + (this.weights.holdBonus || 0);
+                        const holdActionScore = (beamHold[0]?.score ?? -Infinity) + (this.baseWeights.holdBonus || 0);
                         if (holdActionScore > bestOverallScore) {
                             useHold = true;
                         }
@@ -350,26 +440,19 @@
                 }
                 
                 let targetBeam = useHold ? beamHold : beamCurrent;
-
                 if (targetBeam.length > 0) {
                     const explorationRate = parseFloat(document.getElementById('action-exploration-rate').value);
                     if (Math.random() < explorationRate && targetBeam.length > 1) {
-                        const exploreIndex = Math.floor(Math.random() * Math.min(targetBeam.length, 3));
-                        chosenSequence = targetBeam[exploreIndex];
+                        chosenSequence = targetBeam[Math.floor(Math.random() * Math.min(targetBeam.length, 3))];
                     } else {
                         chosenSequence = targetBeam[0];
                     }
                 }
 
                 if (this.game.isGameOver) { this.stop(); return; }
-                
-                if (useHold) {
-                    this.game.hold();
-                } else if (chosenSequence?.moveSequence.length > 0 && this.game.activePiece) {
-                    await this.executeMove(chosenSequence.moveSequence[0]);
-                } else if (this.game.activePiece) {
-                    this.game.hardDrop();
-                }
+                if (useHold) { this.game.hold(); } 
+                else if (chosenSequence?.moveSequence.length > 0 && this.game.activePiece) { await this.executeMove(chosenSequence.moveSequence[0]); } 
+                else if (this.game.activePiece) { this.game.hardDrop(); }
 
             } finally {
                 this.isThinking = false;
@@ -386,7 +469,6 @@
             const lookaheadDepth = parseInt(document.getElementById('lookahead-depth').value, 10);
             const beamWidth = parseInt(document.getElementById('beam-width').value, 10);
             const discountFactor = parseFloat(document.getElementById('discount-factor').value);
-
             let beam = [{ 
                 grid: initialGrid, combo: initialCombo, b2b: initialB2B,
                 score: this.evaluateBoard(initialGrid).totalScore, moveSequence: [] 
@@ -396,14 +478,12 @@
                 if (!pieceQueue[depth]) break;
                 const pieceType = pieceQueue[depth];
                 const allNextStates = [];
-
                 for (const node of beam) {
                     const possiblePlacements = this.calculatePossiblePlacements(node.grid, pieceType);
                     for (const placement of possiblePlacements) {
                         const reward = this.getImmediateReward(placement, node.combo, node.b2b);
                         const { totalScore: stateValue } = this.evaluateBoard(placement.grid);
                         const totalScore = reward + (stateValue * discountFactor);
-
                         allNextStates.push({
                             grid: placement.grid, combo: placement.nextCombo, b2b: placement.nextB2B,
                             score: totalScore,
@@ -424,134 +504,104 @@
             if(linesCleared > 0) {
                  if (isSpin) {
                      if (pieceType === 'T') {
-                         if (isMini) {
-                             score += [0, this.weights.mini_t_spin_single_bonus, this.weights.mini_t_spin_double_bonus][linesCleared] || 0;
-                         } else {
-                             score += [0, this.weights.t_spin_single_bonus, this.weights.t_spin_double_bonus, this.weights.t_spin_triple_bonus][linesCleared] || 0;
-                         }
-                     } else {
-                         score += (this.weights[`${pieceType.toLowerCase()}_spin_bonus`] || 0);
-                     }
-                 } else {
-                     score += Math.pow(linesCleared, this.weights.linesClearedPower || 1.5) * 100;
-                 }
-                     
+                         if (isMini) score += [0, this.baseWeights.mini_t_spin_single_bonus, this.baseWeights.mini_t_spin_double_bonus][linesCleared] || 0;
+                         else score += [0, this.baseWeights.t_spin_single_bonus, this.baseWeights.t_spin_double_bonus, this.baseWeights.t_spin_triple_bonus][linesCleared] || 0;
+                     } else { score += (this.baseWeights[`${pieceType.toLowerCase()}_spin_bonus`] || 0); }
+                 } else { score += Math.pow(linesCleared, this.baseWeights.linesClearedPower || 1.5) * 100; }
                 if(linesCleared > 0 && currentB2B > 0) score *= 1.5;
-                score += currentCombo * (this.weights.combo || 2);
+                score += currentCombo * (this.baseWeights.combo || 2);
             }
-            score += finesse * (this.weights.finessePenalty || -0.2);
+            score += finesse * (this.baseWeights.finessePenalty || -0.2);
             return score;
+        }
+        
+        getBoardFeatures(grid) {
+             const columnHeights = new Array(COLS).fill(0); let aggregateHeight = 0; let holes = 0;
+             let coveredHoles = 0; let bumpiness = 0; let wells = 0;
+             let rowTransitions = 0; let columnTransitions = 0;
+
+             for (let c = 0; c < COLS; c++) {
+                 let foundTop = false;
+                 for (let r = 0; r < grid.length; r++) {
+                     if (grid[r][c] !== 0) {
+                         if (!foundTop) { columnHeights[c] = (ROWS + HIDDEN_ROWS) - r; foundTop = true; }
+                     } else if (foundTop) {
+                         holes++;
+                         if (columnHeights[c] > 0) coveredHoles++;
+                     }
+                 }
+             }
+             const maxHeight = Math.max(...columnHeights);
+
+             for (let i = 0; i < COLS; i++) {
+                 aggregateHeight += columnHeights[i];
+                 if (i > 0) { bumpiness += Math.abs(columnHeights[i] - columnHeights[i - 1]); }
+                 const leftHeight = (i === 0) ? (ROWS + HIDDEN_ROWS) : columnHeights[i-1];
+                 const rightHeight = (i === COLS - 1) ? (ROWS + HIDDEN_ROWS) : columnHeights[i+1];
+                 if (leftHeight > columnHeights[i] && rightHeight > columnHeights[i]) {
+                     wells += Math.min(leftHeight, rightHeight) - columnHeights[i];
+                 }
+             }
+             for (let r = 0; r < ROWS + HIDDEN_ROWS; r++) {
+                 for (let c = 0; c < COLS; c++) {
+                     const current = grid[r]?.[c] > 0;
+                     const right = grid[r]?.[c+1] > 0;
+                     const down = grid[r+1]?.[c] > 0;
+                     if(c < COLS - 1 && current !== right) rowTransitions++;
+                     if(r < ROWS + HIDDEN_ROWS - 1 && current !== down) columnTransitions++;
+                 }
+             }
+             return { aggregateHeight, maxHeight, holes, coveredHoles, bumpiness, wells, rowTransitions, columnTransitions };
         }
 
         evaluateBoard(grid) {
-            const columnHeights = new Array(COLS).fill(0);
-            const heuristicValues = {};
-            let aggregateHeight = 0;
-            let holes = 0;
-            let coveredHoles = 0;
-            let bumpiness = 0;
-            let wells = 0;
-            let rowTransitions = 0;
-            let columnTransitions = 0;
-
-            for (let c = 0; c < COLS; c++) {
-                let foundTop = false;
-                for (let r = 0; r < grid.length; r++) {
-                    if (grid[r][c] !== 0) {
-                        if (!foundTop) {
-                            columnHeights[c] = (ROWS + HIDDEN_ROWS) - r;
-                            foundTop = true;
-                        }
-                    } else if (foundTop) {
-                        holes++;
-                        if (columnHeights[c] > 0) coveredHoles++;
-                    }
-                }
-            }
-            
-            const maxHeight = Math.max(...columnHeights);
-
-            for (let i = 0; i < COLS; i++) {
-                aggregateHeight += columnHeights[i];
-                if (i > 0) {
-                    bumpiness += Math.abs(columnHeights[i] - columnHeights[i - 1]);
-                }
-                
-                const leftHeight = (i === 0) ? (ROWS + HIDDEN_ROWS) : columnHeights[i-1];
-                const rightHeight = (i === COLS - 1) ? (ROWS + HIDDEN_ROWS) : columnHeights[i+1];
-                
-                if (leftHeight > columnHeights[i] && rightHeight > columnHeights[i]) {
-                    wells += Math.min(leftHeight, rightHeight) - columnHeights[i];
-                }
-            }
-            
-            for (let r = 0; r < ROWS + HIDDEN_ROWS; r++) {
-                for (let c = 0; c < COLS; c++) {
-                    const current = grid[r]?.[c] > 0;
-                    const right = grid[r]?.[c+1] > 0;
-                    const down = grid[r+1]?.[c] > 0;
-                    if(c < COLS - 1 && current !== right) rowTransitions++;
-                    if(r < ROWS + HIDDEN_ROWS - 1 && current !== down) columnTransitions++;
-                }
-            }
-            
-            heuristicValues.aggregateHeight = aggregateHeight;
-            heuristicValues.maxHeight = maxHeight;
-            heuristicValues.holes = holes;
-            heuristicValues.coveredHoles = coveredHoles;
-            heuristicValues.bumpiness = bumpiness;
-            heuristicValues.wells = wells;
-            heuristicValues.rowTransitions = rowTransitions;
-            heuristicValues.columnTransitions = columnTransitions;
+            const features = this.getBoardFeatures(grid);
+            const featureVector = Object.values(features);
+            const adjustments = NeuralNetwork.feedForward(featureVector, this.brain);
             
             let totalScore = 0;
-            for(const key in heuristicValues) {
-                totalScore += (this.weights[key] || 0) * heuristicValues[key];
+            const weightKeys = Object.keys(this.baseWeights);
+            for(let i=0; i < weightKeys.length; i++) {
+                const key = weightKeys[i];
+                if(features[key] !== undefined) {
+                    const base = this.baseWeights[key] || 0;
+                    const adjustment = (adjustments[i] || 0) * this.dna.nn_influence;
+                    const dynamicWeight = base + adjustment;
+                    totalScore += dynamicWeight * (features[key] || 0);
+                }
             }
-
-            return { totalScore, heuristicValues };
+            return { totalScore, heuristicValues: features };
         }
 
-        updateHeuristicDisplay(grid) {
-            const { heuristicValues } = this.evaluateBoard(grid);
-            const displayEl = this.game.heuristicDisplayEl;
+        updateAgentDisplay() {
+            const displayEl = this.game.dnaDisplayEl;
             if(displayEl) {
                  displayEl.innerHTML = `
-                    <h4 class="font-bold text-sm mb-1">Heuristics:</h4>
-                    ${Object.entries(heuristicValues).map(([key, value]) => `<p>${key.substring(0,6)}: ${value.toFixed(0)}</p>`).join('')}
+                    <h4 class="font-bold text-sm mb-1">Agent DNA:</h4>
+                    <p>Arch: [${this.dna.hiddenLayers.join(',')}]</p>
+                    <p>Influence: ${this.dna.nn_influence.toFixed(3)}</p>
                  `;
             }
         }
 
         calculatePossiblePlacements(grid, pieceType) {
-            const placements = [];
-            const spawnX = (pieceType === "O" ? 4 : 3);
+            const placements = []; const spawnX = (pieceType === "O" ? 4 : 3);
             for (let r = 0; r < SHAPES[pieceType].length; r++) {
                 const shape = SHAPES[pieceType][r];
                 for (let c = -2; c < COLS + 2; c++) {
                     let tempY = 0;
                     if (this.game.checkCollision(shape, c, tempY, grid)) continue;
                     while (!this.game.checkCollision(shape, c, tempY + 1, grid)) tempY++;
-                    
                     const tempGrid = grid.map((row) => [...row]);
                     shape.forEach((row, y) => row.forEach((val, x) => { if (val !== 0 && tempGrid[tempY + y]) tempGrid[tempY + y][c + x] = val; }));
-                    
                     let linesCleared = 0;
-                    for (let y = 0; y < tempGrid.length; y++) {
-                        if (tempGrid[y].every((cell) => cell !== 0)) linesCleared++;
-                    }
-                    
+                    for (let y = 0; y < tempGrid.length; y++) { if (tempGrid[y].every((cell) => cell !== 0)) linesCleared++; }
                     const finesseCost = Math.abs(c - spawnX) + (r > 1 ? Math.min(r, 4 - r) : r);
                     const { isSpin, isMini } = this.game.checkSpin({type: pieceType, x: c, y: tempY, rotation: r}, tempGrid);
-
                     const nextCombo = linesCleared > 0 ? (this.game.combo || 0) + 1 : 0;
                     const isDifficult = linesCleared >= 4 || isSpin;
                     const nextB2B = isDifficult ? (this.game.b2b || 0) + 1 : 0;
-
-                    placements.push({ 
-                        rotation: r, x: c, grid: tempGrid, linesCleared, isSpin, isMini, nextCombo, finesse: finesseCost,
-                        isDifficult, nextB2B, pieceType
-                    });
+                    placements.push({ rotation: r, x: c, grid: tempGrid, linesCleared, isSpin, isMini, nextCombo, finesse: finesseCost, isDifficult, nextB2B, pieceType });
                 }
             }
             return placements;
@@ -611,7 +661,7 @@
         document.getElementById('generation-display').textContent = generationCounter;
     }
     
-    function generateInstances(parentWeights = null, isNewPopulation = true) {
+    function generateInstances(parentDNA = null, isNewPopulation = true) {
         if(!isNewPopulation) updateGeneration(false);
         else updateGeneration(true);
         
@@ -628,8 +678,8 @@
             const game = new TetrisGame(instanceEl, i, seed);
             gameInstances.push(game);
             if (!includeHuman || i > 1) {
-                let agent = new Agent(game, parentWeights && !parentPreserved ? parentWeights : null, !parentPreserved);
-                if(parentWeights && !parentPreserved) parentPreserved = true;
+                let agent = new Agent(game, parentDNA && !parentPreserved ? parentDNA : null, !parentPreserved);
+                if(parentDNA && !parentPreserved) parentPreserved = true;
                 agents.push(agent);
                 game.agent = agent; 
             }
@@ -646,12 +696,12 @@
     function startAll() { gameInstances.forEach(game => game.start()); if (document.getElementById('ai-enabled-checkbox').checked) { agents.forEach(agent => agent.start()); } }
     function stopAll() { gameInstances.forEach(game => game.stop()); agents.forEach(agent => agent.stop()); }
     
-    function extractBestAgentWeights() {
-        const weightsDisplay = document.getElementById('weights-display');
-        const parentInput = document.getElementById('parent-weights-input');
+    function extractBestAgentDNA() {
+        const dnaDisplay = document.getElementById('dna-display');
+        const parentInput = document.getElementById('parent-dna-input');
         if (agents.length === 0) {
-            weightsDisplay.textContent = "No agents available.";
-            weightsDisplay.classList.remove('hidden'); return;
+            dnaDisplay.textContent = "No agents available.";
+            dnaDisplay.classList.remove('hidden'); return;
         }
         let bestAgent = agents[0]; let bestScore = -Infinity;
         const runningAgents = agents.filter(a => a && !a.game.isGameOver);
@@ -664,21 +714,21 @@
             }
         });
         if (bestAgent) {
-            const weightsString = JSON.stringify(bestAgent.getWeights(), null, 2);
-            weightsDisplay.textContent = weightsString;
-            parentInput.value = weightsString;
-            weightsDisplay.classList.remove('hidden');
+            const dnaString = JSON.stringify(bestAgent.getDNA(), null, 2);
+            dnaDisplay.textContent = dnaString;
+            parentInput.value = dnaString;
+            dnaDisplay.classList.remove('hidden');
         }
     }
     
     function generateFromParent() {
-        const parentInput = document.getElementById('parent-weights-input');
+        const parentInput = document.getElementById('parent-dna-input');
         try {
-            if (!parentInput.value) { alert("Parent weights input is empty."); return; }
-            const parentWeights = JSON.parse(parentInput.value);
-            generateInstances(parentWeights, false);
+            if (!parentInput.value) { alert("Parent DNA input is empty."); return; }
+            const parentDNA = JSON.parse(parentInput.value);
+            generateInstances(parentDNA, false);
         } catch (e) {
-            alert("Invalid JSON in parent weights input."); console.error("Error parsing parent DNA:", e);
+            alert("Invalid JSON in parent DNA input."); console.error("Error parsing parent DNA:", e);
         }
     }
 
@@ -739,7 +789,7 @@
     document.getElementById('start-all-btn').addEventListener('click', startAll);
     document.getElementById('stop-all-btn').addEventListener('click', stopAll);
     document.getElementById('generate-instances-btn').addEventListener('click', () => generateInstances(null, true));
-    document.getElementById('extract-weights-btn').addEventListener('click', extractBestAgentWeights);
+    document.getElementById('extract-dna-btn').addEventListener('click', extractBestAgentDNA);
     document.getElementById('permutate-btn').addEventListener('click', generateFromParent);
     
     window.onload = () => {
