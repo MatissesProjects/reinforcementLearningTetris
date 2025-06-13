@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tetris AI Training Environment - Curriculum Learning</title>
+    <title>Tetris AI Training Environment - Expanded GA</title>
     <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -81,7 +81,7 @@
     <div class="max-w-screen-2xl mx-auto">
         <header class="text-center mb-8">
             <h1 class="text-3xl sm:text-4xl font-bold text-white">Tetris AI Training Environment</h1>
-            <p class="text-gray-400 mt-2">Curriculum Learning Playground</p>
+            <p class="text-gray-400 mt-2">Expanded Genetic Algorithm Playground</p>
         </header>
 
         <div id="main-controls" class="text-center mb-8 bg-gray-800 p-4 rounded-lg shadow-lg">
@@ -104,28 +104,24 @@
              <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                     <h3 class="text-lg font-bold mb-2">Population Controls</h3>
-                    <div class="flex justify-between items-center">
+                    <div class="flex justify-between items-center mb-4">
                         <label for="num-instances" class="text-right pr-2 py-1">Instances:</label>
                         <input type="number" id="num-instances" value="3" min="1" max="12" class="bg-gray-700 text-white rounded px-2 py-1 w-24 text-center">
                         <label class="text-right pr-2 py-1">Generation:</label>
                         <span id="generation-display" class="font-bold text-lg text-teal-300">0</span>
                     </div>
                     <button id="generate-instances-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg w-full mt-4">Generate New Population</button>
-                    <button id="permutate-btn" class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-4 rounded-lg w-full mt-2">Generate from Parent DNA</button>
-                    <textarea id="parent-weights-input" class="mt-4 p-2 rounded-md w-full" placeholder="Paste parent agent's neural network DNA here..."></textarea>
-                    <button id="extract-weights-btn" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg w-full mt-2">Extract Best Agent's DNA</button>
+                    <button id="permutate-btn" class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-4 rounded-lg w-full mt-2">Generate from Parent Weights</button>
+                    <textarea id="parent-weights-input" class="mt-4 p-2 rounded-md w-full" placeholder="Paste parent agent's weights (DNA) here..."></textarea>
+                    <button id="extract-weights-btn" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg w-full mt-2">Extract Best Agent's Weights</button>
                     <div id="weights-display" class="mt-2 p-2 rounded-md text-left hidden"></div>
                 </div>
                  <div>
                      <h3 class="text-lg font-bold mb-2">AI Parameters</h3>
                      <div class="space-y-3 text-sm text-left">
-                        <div class="bg-gray-700 p-2 rounded">
-                            <label>NN-Only Chance: </label>
-                            <span id="nn-only-chance-display" class="font-bold text-teal-300">0.00</span>
-                        </div>
                         <div>
-                             <label for="heuristic-blend">Heuristic Blend (when not NN-Only): <span id="heuristic-blend-value">1.00</span></label>
-                             <input type="range" id="heuristic-blend" min="0" max="1.0" step="0.01" value="1.0">
+                             <label for="action-exploration-rate">Action Exploration Rate: <span id="action-exploration-rate-value">0.10</span></label>
+                             <input type="range" id="action-exploration-rate" min="0" max="1.0" step="0.01" value="0.1">
                         </div>
                         <div>
                              <label for="lookahead-depth">Lookahead Depth: <span id="lookahead-depth-value">3</span></label>
@@ -169,7 +165,7 @@
     class SeededRandom{constructor(e){this.seed=e}next(){return this.seed=(9301*this.seed+49297)%233280,this.seed/233280}}
     
     class TetrisGame{
-        constructor(e,t,s){this.id=t;this.container=e;this.rng=new SeededRandom(s);this.lastTime=0;this.initUI();this.reset();}
+        constructor(e,t,s){this.id=t;this.container=e;this.rng=new SeededRandom(s);this.lastTime=0;this.agent=null;this.initUI();this.reset();}
         initUI() {
             this.container.innerHTML = `
                 <h2 class="text-xl font-bold mb-4 text-center w-full">Agent ${this.id}</h2>
@@ -188,7 +184,6 @@
                             <p>Level: <span id="level-${this.id}">1</span></p>
                             <p>Combo: <span id="combo-${this.id}">0</span></p>
                             <p>B2B: <span id="b2b-${this.id}">0</span></p>
-                            <p>LPM: <span id="lpm-${this.id}">0</span></p>
                         </div>
                         <button id="reset-btn-${this.id}" class="reset-btn mt-4 bg-gray-600 hover:bg-gray-700 text-white font-bold py-1 px-2 rounded">Reset</button>
                     </div>
@@ -201,15 +196,15 @@
                         <div id="next-queue-${this.id}" class="flex flex-col items-center gap-2 mt-2"></div>
                     </div>
                 </div>`;
-            this.canvas=document.getElementById(`game-canvas-${this.id}`);this.ctx=this.canvas.getContext("2d");this.ctx.scale(BLOCK_SIZE,BLOCK_SIZE);this.holdCtx=document.getElementById(`hold-canvas-${this.id}`).getContext("2d");this.nextQueueContainer=document.getElementById(`next-queue-${this.id}`);this.nextCanvases=[];for(let e=0;e<5;e++){const t=document.createElement("canvas");t.width=80,t.height=80,this.nextQueueContainer.appendChild(t),this.nextCanvases.push(t.getContext("2d"))}this.scoreEl=document.getElementById(`score-${this.id}`);this.linesEl=document.getElementById(`lines-${this.id}`);this.levelEl=document.getElementById(`level-${this.id}`);this.comboEl=document.getElementById(`combo-${this.id}`);this.b2bEl=document.getElementById(`b2b-${this.id}`);this.lpmEl=document.getElementById(`lpm-${this.id}`);this.gameOverEl=document.getElementById(`game-over-${this.id}`);document.getElementById(`reset-btn-${this.id}`).addEventListener("click",()=>this.reset());document.querySelector(`#instance-wrapper-${this.id} h2`).textContent=`Agent ${this.id}`
+            this.canvas=document.getElementById(`game-canvas-${this.id}`);this.ctx=this.canvas.getContext("2d");this.ctx.scale(BLOCK_SIZE,BLOCK_SIZE);this.holdCtx=document.getElementById(`hold-canvas-${this.id}`).getContext("2d");this.nextQueueContainer=document.getElementById(`next-queue-${this.id}`);this.nextCanvases=[];for(let e=0;e<5;e++){const t=document.createElement("canvas");t.width=80,t.height=80,this.nextQueueContainer.appendChild(t),this.nextCanvases.push(t.getContext("2d"))}this.scoreEl=document.getElementById(`score-${this.id}`);this.linesEl=document.getElementById(`lines-${this.id}`);this.levelEl=document.getElementById(`level-${this.id}`);this.comboEl=document.getElementById(`combo-${this.id}`);this.b2bEl=document.getElementById(`b2b-${this.id}`);this.gameOverEl=document.getElementById(`game-over-${this.id}`);document.getElementById(`reset-btn-${this.id}`).addEventListener("click",()=>this.reset());document.querySelector(`#instance-wrapper-${this.id} h2`).textContent=`Agent ${this.id}`
         }
         reset(){this.isRunning=!1,this.isGameOver=!1,this.score=0,this.linesCleared=0,this.level=1,this.combo=0,this.b2b=0,this.finesseMoves=0,this.startTime=Date.now(),this.dropCounter=0,this.dasCounter=0,this.arrCounter=0,this.leftHeld=!1,this.rightHeld=!1,this.softDropActive=!1,this.lockDelayTimer=0,this.isTouchingFloor=!1,this.lockDelayResets=0,this.lastMoveWasRotation=!1,this.grid=this.createGrid(COLS,ROWS+HIDDEN_ROWS),this.pieceQueue=[],this.fillQueue(),this.spawnNewPiece(),this.holdPiece=null,this.canHold=!0,this.updateStats(),this.gameOverEl.style.display="none"; const wrapper = document.getElementById(`instance-wrapper-${this.id}`); if (wrapper) { wrapper.classList.remove('opacity-50'); } }
         createGrid(e,t){return Array.from({length:t},()=>Array(e).fill(0))}fillQueue(){const e=[...PIECE_KEYS];while(e.length){const t=e.splice(Math.floor(this.rng.next()*e.length),1)[0];this.pieceQueue.push(t)}}
         spawnNewPiece(e=null){if(this.isGameOver)return;e||(this.pieceQueue.length<7&&this.fillQueue(),e=this.pieceQueue.shift()),this.activePiece={type:e,rotation:0,x:3,y:18,finesse:0},"O"===e&&(this.activePiece.x=4),"I"===e&&(this.activePiece.y=17),this.activePiece.shape=SHAPES[this.activePiece.type][this.activePiece.rotation],this.isTouchingFloor=!1,this.lockDelayResets=0,this.lastMoveWasRotation=!1,this.checkCollision(this.activePiece.shape,this.activePiece.x,this.activePiece.y)&&this.gameOver()}
-        checkCollision(e,t,s,i=this.grid){for(let r=0;r<e.length;r++)for(let o=0;o<e[r].length;o++)if(0!==e[r][o]){const n=t+o,l=s+r;if(n<0||n>=COLS||l>=ROWS+HIDDEN_ROWS||i[l]&&0!==i[l][n])return!0}return!1}
+        checkCollision(e,t,s,i=this.grid){for(let r=0;r<e.length;r++)for(let o=0;o<e[r].length;o++)if(0!==e[r][o]){const n=t+o,l=s+r;if(n<0||n>=COLS||l<0||l>=ROWS+HIDDEN_ROWS||i[l]&&0!==i[l][n])return!0}return!1}
         lockPiece() {
             const piece = this.activePiece;
-            if (!piece) return;
+            if (!piece || piece.y < 0) return;
             piece.shape.forEach((row, rowIndex) => { row.forEach((value, colIndex) => { if (value !== 0) { const boardY = piece.y + rowIndex; const boardX = piece.x + colIndex; if (boardY >= 0 && boardY < this.grid.length && this.grid[boardY]) { this.grid[boardY][boardX] = value; } } }); });
             const spinInfo = this.lastMoveWasRotation ? this.checkSpin(piece) : { isSpin: false, isMini: false };
             let clearedRows = this.clearLines();
@@ -225,13 +220,13 @@
             this.spawnNewPiece(); this.canHold = !0; this.updateStats();
         }
         checkSpin(e, grid = this.grid) {
-            if (!e?.type || "O" === e.type) return { isSpin: false, isMini: false };
+            if (!e?.type || "O" === e.type || e.y < 0) return { isSpin: false, isMini: false };
             const t = e.x + 1, s = e.y + 1; let i = 0, r = 0;
             const o = [[s - 1, t - 1], [s - 1, t + 1], [s + 1, t + 1], [s + 1, t - 1]];
-            o.forEach(([y, x]) => { if (grid[y]?.[x] > 0) i++; });
+            o.forEach(([y, x]) => { if (y >= 0 && grid[y]?.[x] > 0) i++; });
             if (i < 3) return { isSpin: false, isMini: false };
             const n = [[s - 1, t], [s, t + 1], [s + 1, t], [s, t - 1]][e.rotation];
-            o.forEach(([y, x], idx) => { if (!(y === n[0] && x === n[1])) { if (grid[y]?.[x] > 0) r++; } });
+            o.forEach(([y, x], idx) => { if (!(y === n[0] && x === n[1])) { if (y >= 0 && grid[y]?.[x] > 0) r++; } });
             return { isSpin: true, isMini: r < 2 };
         }
         clearLines(){let t=[];for(let s=this.grid.length-1;s>=0;s--)this.grid[s].every(e=>0!==e)&&t.push(s);if(t.length>0){for(const i of t)this.grid.splice(i,1);for(let i=0;i<t.length;i++)this.grid.unshift(new Array(COLS).fill(0));}return t}
@@ -250,7 +245,7 @@
         drawGhostPiece(){if(!this.activePiece)return;const e={...this.activePiece};for(;!this.checkCollision(e.shape,e.x,e.y+1);)e.y++;this.ctx.globalAlpha=.3;this.drawMatrix(e.shape,e.x,e.y-HIDDEN_ROWS,this.ctx,this.activePiece.type),this.ctx.globalAlpha=1}
         drawPieceInPreview(e,t){e.clearRect(0,0,80,80);if(t){const s=SHAPES[t.type][0],i="I"===t.type||"O"===t.type?18:20,r=s[0].length*i,o=s.length*i,n=(80-r)/2,l=(80-o)/2;e.fillStyle=COLORS[t.type],s.forEach((t,s)=>t.forEach((r,o)=>{r&&e.fillRect(n+o*i,l+s*i,i-1,i-1)}))}}
         drawHoldPiece(){this.drawPieceInPreview(this.holdCtx,this.holdPiece)}drawNextQueue(){this.nextCanvases.forEach((e,t)=>{const s=this.pieceQueue[t];s?this.drawPieceInPreview(e,{type:s}):e.clearRect(0,0,80,80)})}
-        updateStats(){this.scoreEl.textContent=this.score;this.linesEl.textContent=this.linesCleared;this.levelEl.textContent=this.level;this.comboEl.textContent=this.combo;this.b2bEl.textContent=this.b2b;const elapsedMinutes=(Date.now()-this.startTime)/6e4;this.lpmEl.textContent=elapsedMinutes>0?(this.linesCleared/elapsedMinutes).toFixed(2):"0.00"}
+        updateStats(){this.scoreEl.textContent=this.score;this.linesEl.textContent=this.linesCleared;this.levelEl.textContent=this.level;this.comboEl.textContent=this.combo;this.b2bEl.textContent=this.b2b;}
         gameOver(){
             this.isRunning=!1,this.isGameOver=!0,this.activePiece=null,this.gameOverEl.style.display="flex";
             console.log(`Game ${this.id} Over! Final Score: ${this.score}`);
@@ -264,134 +259,62 @@
         gameLoop(e){if(this.isRunning){const t=e-(this.lastTime||e);this.lastTime=e,this.update(t),requestAnimationFrame(this.gameLoop.bind(this))}}
     }
     
-    // --- NEURAL NETWORK CLASS ---
-    class NeuralNetwork {
-        constructor(layerSizes) {
-            this.levels = [];
-            for (let i = 0; i < layerSizes.length - 1; i++) {
-                this.levels.push(new Level(layerSizes[i], layerSizes[i+1]));
-            }
-        }
-
-        static feedForward(givenInputs, network) {
-            let outputs = Level.feedForward(givenInputs, network.levels[0]);
-            for (let i = 1; i < network.levels.length; i++) {
-                outputs = Level.feedForward(outputs, network.levels[i]);
-            }
-            return outputs;
-        }
-        
-        static getDNA(network) {
-            const dna = { weights: [], biases: [] };
-            network.levels.forEach(level => {
-                dna.weights.push(...level.weights.flat());
-                dna.biases.push(...level.biases);
-            });
-            return dna;
-        }
-
-        static loadDNA(network, dna) {
-            if(!dna || !dna.weights || !dna.biases) return;
-            let weightIndex = 0;
-            let biasIndex = 0;
-            for(let i=0; i < network.levels.length; i++){
-                for(let j=0; j < network.levels[i].weights.length; j++){
-                    for(let k=0; k < network.levels[i].weights[j].length; k++){
-                        network.levels[i].weights[j][k] = dna.weights[weightIndex++];
-                    }
-                }
-                for(let j=0; j < network.levels[i].biases.length; j++){
-                    network.levels[i].biases[j] = dna.biases[biasIndex++];
-                }
-            }
-        }
-
-        static mutate(network, mutationRate, mutationAmount) {
-            network.levels.forEach(level => {
-                for (let i = 0; i < level.biases.length; i++) {
-                    if (Math.random() < mutationRate) {
-                        level.biases[i] += (Math.random() * 2 - 1) * mutationAmount;
-                    }
-                }
-                for (let i = 0; i < level.weights.length; i++) {
-                    for (let j = 0; j < level.weights[i].length; j++) {
-                        if (Math.random() < mutationRate) {
-                            level.weights[i][j] += (Math.random() * 2 - 1) * mutationAmount;
-                        }
-                    }
-                }
-            });
-        }
-    }
-
-    class Level {
-        constructor(inputCount, outputCount) {
-            this.inputs = new Array(inputCount);
-            this.outputs = new Array(outputCount);
-            this.biases = new Array(outputCount);
-            this.weights = [];
-            for (let i = 0; i < inputCount; i++) {
-                this.weights[i] = new Array(outputCount);
-            }
-            Level.#randomize(this);
-        }
-
-        static #randomize(level) {
-            for (let i = 0; i < level.inputs.length; i++) {
-                for (let j = 0; j < level.outputs.length; j++) {
-                    level.weights[i][j] = Math.random() * 2 - 1;
-                }
-            }
-            for (let i = 0; i < level.biases.length; i++) {
-                level.biases[i] = Math.random() * 2 - 1;
-            }
-        }
-
-        static feedForward(givenInputs, level) {
-            for (let i = 0; i < level.inputs.length; i++) {
-                level.inputs[i] = givenInputs[i];
-            }
-            for (let i = 0; i < level.outputs.length; i++) {
-                let sum = 0;
-                for (let j = 0; j < level.inputs.length; j++) {
-                    sum += level.inputs[j] * level.weights[j][i];
-                }
-                // Use ReLU for hidden layers, linear for output
-                if (i < level.outputs.length - 1) {
-                    level.outputs[i] = Math.max(0, sum + level.biases[i]); // ReLU
-                } else {
-                    level.outputs[i] = sum + level.biases[i]; // Linear output
-                }
-            }
-            return level.outputs;
-        }
-    }
-
     // --- AGENT (AI) CLASS ---
     class Agent {
-        constructor(game, parentDNA = null, shouldMutate = true) {
+        constructor(game, weights = null, shouldMutate = true) {
             this.game = game; this.thinkTimeout = null; this.isThinking = false;
             
-            // Heuristic weights for curriculum learning
-            this.heuristicWeights = {
-                height: -0.3, holes: -4, overhangs: -5, bumpiness: -0.15, wellDepth: -0.5,
-                lines: 5, spinBonus: 4, combo: 2, tSlotBonus: 2.5, cleanWellBonus: 1, 
-            };
-            
-            // NN has 8 inputs (features), one hidden layer of 10 neurons, one output (state value).
-            this.brain = new NeuralNetwork([8, 10, 1]); 
+            const defaultWeights = {
+                // Heuristic weights (State Evaluation)
+                aggregateHeight: -0.51,
+                maxHeight: -0.2, 
+                holes: -0.36,
+                coveredHoles: -0.8,
+                bumpiness: -0.18,
+                wells: -0.72,
+                rowTransitions: -0.1,
+                columnTransitions: -0.1,
 
-            if (parentDNA) {
-                 NeuralNetwork.loadDNA(this.brain, parentDNA);
+                // Immediate Reward weights
+                linesClearedPower: 1.5,
+                combo: 3, 
+                holdBonus: 0.5,
+                finessePenalty: -0.2,
+
+                // Spin Bonuses
+                t_spin_single_bonus: 800,
+                t_spin_double_bonus: 1200,
+                t_spin_triple_bonus: 1600,
+                mini_t_spin_single_bonus: 100,
+                mini_t_spin_double_bonus: 200,
+                l_spin_bonus: 400,
+                j_spin_bonus: 400,
+                s_spin_bonus: 400,
+                z_spin_bonus: 400,
+            };
+            this.weights = {};
+
+            if (weights) {
                  if (shouldMutate) {
                     const mutationRate = parseFloat(document.getElementById("mutation-rate").value);
                     const mutationAmount = parseFloat(document.getElementById("mutation-amount").value);
-                    NeuralNetwork.mutate(this.brain, mutationRate, mutationAmount);
+                    for (const key in defaultWeights) {
+                        this.weights[key] = weights[key] !== undefined ? weights[key] : defaultWeights[key];
+                        if (Math.random() < mutationRate) {
+                           this.weights[key] *= (1 + (Math.random() * mutationAmount * 2 - mutationAmount));
+                        }
+                    }
+                 } else {
+                    this.weights = { ...weights };
                  }
+            } else { 
+                for (const key in defaultWeights) { 
+                    this.weights[key] = defaultWeights[key] + (Math.random() * Math.abs(defaultWeights[key] * 0.5) - Math.abs(defaultWeights[key] * 0.25));
+                }
             }
         }
 
-        getDNA() { return NeuralNetwork.getDNA(this.brain); }
+        getWeights() { return this.weights; }
         
         start() { this.stop(); if (this.game.isRunning) this.think(); }
         stop() { if(this.thinkTimeout) clearTimeout(this.thinkTimeout); this.isThinking = false; }
@@ -403,26 +326,45 @@
             this.isThinking = true;
 
             try {
-                let bestMove = null; let useHold = false;
+                let chosenSequence = null; 
+                let useHold = false;
                 
-                const piecesCurrent = [this.game.activePiece.type, ...this.game.pieceQueue];
-                const resultCurrent = this.beamSearch(this.game.grid, piecesCurrent, this.game.combo, this.game.b2b);
-                let bestOverallScore = resultCurrent.score;
-                if (resultCurrent.moveSequence.length > 0) bestMove = resultCurrent.moveSequence[0];
-
+                const beamCurrent = this.beamSearch(this.game.grid, [this.game.activePiece.type, ...this.game.pieceQueue], this.game.combo, this.game.b2b);
+                let bestOverallScore = beamCurrent[0]?.score ?? -Infinity;
+                
+                let beamHold = [];
                 if (this.game.canHold) {
                     const piecesAfterHold = this.game.holdPiece ? [this.game.holdPiece.type, ...this.game.pieceQueue] : this.game.pieceQueue.slice(1);
                     if (piecesAfterHold.length > 0) {
-                        const resultHold = this.beamSearch(this.game.grid, piecesAfterHold, this.game.combo, this.game.b2b);
-                        const holdActionScore = resultHold.score;
-                        if (holdActionScore > bestOverallScore) useHold = true;
+                        beamHold = this.beamSearch(this.game.grid, piecesAfterHold, this.game.combo, this.game.b2b);
+                        const holdActionScore = (beamHold[0]?.score ?? -Infinity) + (this.weights.holdBonus || 0);
+                        if (holdActionScore > bestOverallScore) {
+                            useHold = true;
+                        }
+                    }
+                }
+                
+                let targetBeam = useHold ? beamHold : beamCurrent;
+
+                if (targetBeam.length > 0) {
+                    const explorationRate = parseFloat(document.getElementById('action-exploration-rate').value);
+                    if (Math.random() < explorationRate && targetBeam.length > 1) {
+                        const exploreIndex = Math.floor(Math.random() * Math.min(targetBeam.length, 3));
+                        chosenSequence = targetBeam[exploreIndex];
+                    } else {
+                        chosenSequence = targetBeam[0];
                     }
                 }
 
                 if (this.game.isGameOver) { this.stop(); return; }
-                if (useHold) { this.game.hold(); } 
-                else if (bestMove && this.game.activePiece) { await this.executeMove(bestMove); } 
-                else if (this.game.activePiece) { this.game.hardDrop(); }
+                
+                if (useHold) {
+                    this.game.hold();
+                } else if (chosenSequence?.moveSequence.length > 0 && this.game.activePiece) {
+                    await this.executeMove(chosenSequence.moveSequence[0]);
+                } else if (this.game.activePiece) {
+                    this.game.hardDrop();
+                }
 
             } finally {
                 this.isThinking = false;
@@ -442,7 +384,7 @@
 
             let beam = [{ 
                 grid: initialGrid, combo: initialCombo, b2b: initialB2B,
-                score: this.evaluateState(initialGrid), moveSequence: [] 
+                score: this.evaluateBoard(initialGrid), moveSequence: [] 
             }];
 
             for (let depth = 0; depth < lookaheadDepth; depth++) {
@@ -454,12 +396,12 @@
                     const possiblePlacements = this.calculatePossiblePlacements(node.grid, pieceType);
                     for (const placement of possiblePlacements) {
                         const reward = this.getImmediateReward(placement, node.combo, node.b2b);
-                        const stateValue = this.evaluateState(placement.grid, placement);
+                        const stateValue = this.evaluateBoard(placement.grid);
                         const totalScore = reward + (stateValue * discountFactor);
 
                         allNextStates.push({
                             grid: placement.grid, combo: placement.nextCombo, b2b: placement.nextB2B,
-                            score: (node.score - this.evaluateState(node.grid)) + totalScore,
+                            score: totalScore,
                             moveSequence: [...node.moveSequence, placement]
                         });
                     }
@@ -468,85 +410,92 @@
                 allNextStates.sort((a, b) => b.score - a.score);
                 beam = allNextStates.slice(0, beamWidth);
             }
-            return beam[0] || { score: -Infinity, moveSequence: [] };
+            return beam;
         }
         
         getImmediateReward(placement, currentCombo, currentB2B) {
-            const { linesCleared, isSpin, isDifficult } = placement;
+            const { linesCleared, isSpin, isMini, finesse, pieceType } = placement;
             let score = 0;
-            if(linesCleared > 0) {
-                 if (isSpin) { score = { 1: 800, 2: 1200, 3: 1600 }[linesCleared] || 400; } 
-                 else { score = { 1: 100, 2: 300, 3: 500, 4: 800 }[linesCleared] || 0; }
-                 if(currentB2B > 0 && isDifficult) score *= 1.5;
-                 score += currentCombo * 50;
+            score += Math.pow(linesCleared, this.weights.linesClearedPower || 1.5) * 100;
+            
+            if(isSpin) {
+                 if (pieceType === 'T') {
+                     if (isMini) {
+                         score += [0, this.weights.mini_t_spin_single_bonus, this.weights.mini_t_spin_double_bonus][linesCleared] || 0;
+                     } else {
+                         score += [0, this.weights.t_spin_single_bonus, this.weights.t_spin_double_bonus, this.weights.t_spin_triple_bonus][linesCleared] || 0;
+                     }
+                 } else {
+                     score += (this.weights[`${pieceType.toLowerCase()}_spin_bonus`] || 0);
+                 }
             }
+                 
+            if(linesCleared > 0 && currentB2B > 0) score *= 1.5;
+            score += currentCombo * (this.weights.combo || 2);
+            score += finesse * (this.weights.finessePenalty || -0.2);
             return score;
         }
 
-        evaluateState(grid, placementInfo = null) {
-            // New logic: Decide stochastically whether to use the NN exclusively.
-            const nnOnlyChance = parseFloat(document.getElementById('nn-only-chance-display').textContent);
-            if(Math.random() < nnOnlyChance) {
-                return this.evaluateStateWithNN(grid, placementInfo);
-            }
-
-            // Otherwise, use the blend as before.
-            const blend = parseFloat(document.getElementById('heuristic-blend').value);
-            const nnValue = this.evaluateStateWithNN(grid, placementInfo);
-            const heuristicValue = this.getHeuristicValue(grid, placementInfo);
-            return (heuristicValue * blend) + (nnValue * (1 - blend));
-        }
-        
-        evaluateStateWithNN(grid, placementInfo = null) {
-            const features = this.getBoardFeatures(grid, placementInfo);
-            const value = NeuralNetwork.feedForward(features, this.brain);
-            return value[0];
-        }
-
-        getHeuristicValue(grid, placementInfo) {
-            const features = this.getBoardFeatures(grid, placementInfo);
-            const w = this.heuristicWeights;
-            const featureNames = ['height', 'holes', 'overhangs', 'bumpiness', 'wellDepth', 'lines', 'spinBonus', 'tSlotBonus'];
-            let score = 0;
-            for(let i=0; i < features.length; i++){
-                score += (w[featureNames[i]] || 0) * features[i];
-            }
-            return score;
-        }
-
-        getBoardFeatures(grid, placementInfo) {
-            let holes = 0, overhangs = 0, aggregateHeight = 0, bumpiness = 0, wellDepthSum = 0;
+        evaluateBoard(grid) {
             const columnHeights = new Array(COLS).fill(0);
+            let aggregateHeight = 0;
+            let holes = 0;
+            let coveredHoles = 0;
+            let bumpiness = 0;
+            let wells = 0;
+            let rowTransitions = 0;
+            let columnTransitions = 0;
 
             for (let c = 0; c < COLS; c++) {
                 let foundTop = false;
                 for (let r = 0; r < grid.length; r++) {
                     if (grid[r][c] !== 0) {
-                        if (!foundTop) { columnHeights[c] = (ROWS + HIDDEN_ROWS) - r; foundTop = true; }
-                    } else {
-                        if (foundTop) holes++;
-                        if (r > 0 && grid[r - 1]?.[c] !== 0) overhangs++;
+                        if (!foundTop) {
+                            columnHeights[c] = (ROWS + HIDDEN_ROWS) - r;
+                            foundTop = true;
+                        }
+                    } else if (foundTop) {
+                        holes++;
+                        if (columnHeights[c] > 0) coveredHoles++;
                     }
                 }
             }
-            aggregateHeight = columnHeights.reduce((a, b) => a + b, 0);
+            
             const maxHeight = Math.max(...columnHeights);
 
             for (let i = 0; i < COLS; i++) {
-                if (i > 0) { bumpiness += Math.abs(columnHeights[i] - columnHeights[i-1]); }
-                const leftHeight = i > 0 ? columnHeights[i-1] : maxHeight;
-                const rightHeight = i < COLS - 1 ? columnHeights[i+1] : maxHeight;
-                if(leftHeight > columnHeights[i] && rightHeight > columnHeights[i]) {
-                    wellDepthSum += Math.min(leftHeight, rightHeight) - columnHeights[i];
+                aggregateHeight += columnHeights[i];
+                if (i > 0) {
+                    bumpiness += Math.abs(columnHeights[i] - columnHeights[i - 1]);
+                }
+                
+                const leftHeight = (i === 0) ? (ROWS + HIDDEN_ROWS) : columnHeights[i-1];
+                const rightHeight = (i === COLS - 1) ? (ROWS + HIDDEN_ROWS) : columnHeights[i+1];
+                
+                if (leftHeight > columnHeights[i] && rightHeight > columnHeights[i]) {
+                    wells += Math.min(leftHeight, rightHeight) - columnHeights[i];
                 }
             }
             
-            return [
-                aggregateHeight, holes, overhangs, bumpiness, wellDepthSum,
-                (placementInfo?.linesCleared || 0),
-                (placementInfo?.isSpin ? 1 : 0),
-                (placementInfo?.tSlotBonus || 0)
-            ];
+            for (let r = 0; r < ROWS + HIDDEN_ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    const current = grid[r]?.[c] > 0;
+                    const right = grid[r]?.[c+1] > 0;
+                    const down = grid[r+1]?.[c] > 0;
+                    if(c < COLS - 1 && current !== right) rowTransitions++;
+                    if(r < ROWS + HIDDEN_ROWS - 1 && current !== down) columnTransitions++;
+                }
+            }
+
+
+            return (this.weights.aggregateHeight * aggregateHeight) +
+                   (this.weights.maxHeight * maxHeight) +
+                   (this.weights.holes * holes) +
+                   (this.weights.coveredHoles * coveredHoles) +
+                   (this.weights.bumpiness * bumpiness) +
+                   (this.weights.wells * wells) +
+                   (this.weights.rowTransitions * rowTransitions) +
+                   (this.weights.columnTransitions * columnTransitions);
         }
 
         calculatePossiblePlacements(grid, pieceType) {
@@ -568,37 +517,21 @@
                     }
                     
                     const finesseCost = Math.abs(c - spawnX) + (r > 1 ? Math.min(r, 4 - r) : r);
-                    const { isSpin } = this.game.checkSpin({type: pieceType, x: c, y: tempY, rotation: r}, tempGrid);
-                    const tSlotBonus = this.checkTSlot(tempGrid, c, tempY);
+                    const { isSpin, isMini } = this.game.checkSpin({type: pieceType, x: c, y: tempY, rotation: r}, tempGrid);
 
                     const nextCombo = linesCleared > 0 ? (this.game.combo || 0) + 1 : 0;
                     const isDifficult = linesCleared >= 4 || isSpin;
                     const nextB2B = isDifficult ? (this.game.b2b || 0) + 1 : 0;
 
                     placements.push({ 
-                        rotation: r, x: c, grid: tempGrid, linesCleared, isSpin, nextCombo, finesse: finesseCost,
-                        isDifficult, nextB2B, tSlotBonus
+                        rotation: r, x: c, grid: tempGrid, linesCleared, isSpin, isMini, nextCombo, finesse: finesseCost,
+                        isDifficult, nextB2B, pieceType
                     });
                 }
             }
             return placements;
         }
         
-        checkTSlot(grid, pieceX, pieceY) {
-            for(let c = pieceX; c < pieceX + 3; c++) {
-                for (let r = pieceY; r < pieceY + 3; r++) {
-                     if (r < 0 || r >= grid.length || c < 0 || c >= COLS) continue;
-                     if (grid[r][c] === 0) { 
-                         const left = grid[r]?.[c-1] !== 0 && grid[r]?.[c-1] !== undefined;
-                         const right = grid[r]?.[c+1] !== 0 && grid[r]?.[c+1] !== undefined;
-                         const down = grid[r+1]?.[c] !== 0 && grid[r+1]?.[c] !== undefined;
-                         if (left && right && down) return 1;
-                     }
-                }
-            }
-            return 0;
-        }
-
         async executeMove(move) {
             if (this.game.isGameOver || !this.game.activePiece) return;
             const speed = parseFloat(document.getElementById('game-speed')?.value || 500);
@@ -629,22 +562,16 @@
     // --- MAIN SCRIPT ---
     let gameInstances = []; let agents = []; let humanPlayerKeyListeners = null;
     let generationCounter = 0;
-    const TOTAL_GENS_FOR_TRANSITION = 20; // How many generations it takes to go from 0% to 100% NN-only chance
-
+    
     function createInstanceElement(id) { const w = document.createElement('div'); w.className = 'instance-wrapper bg-gray-800/50 p-4 rounded-lg shadow-md'; w.id = `instance-wrapper-${id}`; return w; }
     
     function updateGeneration(isNew) {
         if(isNew) generationCounter = 0;
         else generationCounter++;
-        
         document.getElementById('generation-display').textContent = generationCounter;
-        
-        // Use a square root curve for an accelerated transition to NN-only evaluation
-        const nnOnlyChance = Math.min(1, Math.sqrt(generationCounter / TOTAL_GENS_FOR_TRANSITION));
-        document.getElementById('nn-only-chance-display').textContent = nnOnlyChance.toFixed(2);
     }
     
-    function generateInstances(parentDNA = null, isNewPopulation = true) {
+    function generateInstances(parentWeights = null, isNewPopulation = true) {
         if(isNewPopulation) updateGeneration(true);
         
         const instancesContainer = document.getElementById('game-instances-container'); const numInstancesInput = document.getElementById('num-instances'); const seedDisplay = document.getElementById('seed-display');
@@ -660,14 +587,11 @@
             const game = new TetrisGame(instanceEl, i, seed);
             gameInstances.push(game);
             if (!includeHuman || i > 1) {
-                let agent;
-                if (parentDNA && !parentPreserved) {
-                    agent = new Agent(game, parentDNA, false);
-                    parentPreserved = true;
-                } else {
-                    agent = new Agent(game, parentDNA, true);
-                }
+                let agent = new Agent(game, parentWeights && !parentPreserved ? parentWeights : null, !parentPreserved);
+                if(parentWeights && !parentPreserved) parentPreserved = true;
+
                 agents.push(agent);
+                game.agent = agent; 
             }
         }
         if (includeHuman && gameInstances.length > 0) {
@@ -682,7 +606,7 @@
     function startAll() { gameInstances.forEach(game => game.start()); if (document.getElementById('ai-enabled-checkbox').checked) { agents.forEach(agent => agent.start()); } }
     function stopAll() { gameInstances.forEach(game => game.stop()); agents.forEach(agent => agent.stop()); }
     
-    function extractBestAgentDNA() {
+    function extractBestAgentWeights() {
         const weightsDisplay = document.getElementById('weights-display');
         const parentInput = document.getElementById('parent-weights-input');
         if (agents.length === 0) {
@@ -700,9 +624,9 @@
             }
         });
         if (bestAgent) {
-            const dnaString = JSON.stringify(bestAgent.getDNA());
-            weightsDisplay.textContent = dnaString;
-            parentInput.value = dnaString;
+            const weightsString = JSON.stringify(bestAgent.getWeights(), null, 2);
+            weightsDisplay.textContent = weightsString;
+            parentInput.value = weightsString;
             weightsDisplay.classList.remove('hidden');
         }
     }
@@ -711,11 +635,11 @@
         updateGeneration(false);
         const parentInput = document.getElementById('parent-weights-input');
         try {
-            if (!parentInput.value) { alert("Parent DNA input is empty."); return; }
-            const parentDNA = JSON.parse(parentInput.value);
-            generateInstances(parentDNA, false);
+            if (!parentInput.value) { alert("Parent weights input is empty."); return; }
+            const parentWeights = JSON.parse(parentInput.value);
+            generateInstances(parentWeights, false);
         } catch (e) {
-            alert("Invalid JSON in parent DNA input."); console.error("Error parsing parent DNA:", e);
+            alert("Invalid JSON in parent weights input."); console.error("Error parsing parent DNA:", e);
         }
     }
 
@@ -725,7 +649,7 @@
         const valueEl = document.getElementById(valueId);
         slider.oninput = () => { valueEl.textContent = isFloat ? parseFloat(slider.value).toFixed(2) : slider.value; };
     }
-    setupSlider('heuristic-blend', 'heuristic-blend-value', true);
+    setupSlider('action-exploration-rate', 'action-exploration-rate-value', true);
     setupSlider('lookahead-depth', 'lookahead-depth-value');
     setupSlider('beam-width', 'beam-width-value');
     setupSlider('discount-factor', 'discount-factor-value', true);
@@ -745,7 +669,7 @@
     document.getElementById('start-all-btn').addEventListener('click', startAll);
     document.getElementById('stop-all-btn').addEventListener('click', stopAll);
     document.getElementById('generate-instances-btn').addEventListener('click', () => generateInstances(null, true));
-    document.getElementById('extract-weights-btn').addEventListener('click', extractBestAgentDNA);
+    document.getElementById('extract-weights-btn').addEventListener('click', extractBestAgentWeights);
     document.getElementById('permutate-btn').addEventListener('click', generateFromParent);
     window.onload = () => generateInstances(null, true);
     </script>
