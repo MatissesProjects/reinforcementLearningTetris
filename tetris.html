@@ -6,6 +6,7 @@
     <title>Tetris AI Training Environment - Expanded GA</title>
     <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body {
             font-family: 'Roboto Mono', monospace;
@@ -21,6 +22,7 @@
             background-color: #2d3748;
             border-radius: 0.5rem;
             padding: 1rem;
+            font-size: 0.8rem;
         }
         .info-panel canvas {
             background-color: #1a202c;
@@ -152,6 +154,13 @@
              </div>
         </div>
 
+        <div id="performance-container" class="my-8 bg-gray-800 p-4 rounded-lg shadow-lg">
+             <button id="toggle-chart-btn" class="w-full text-left font-bold text-lg mb-2">Performance History (Click to Toggle)</button>
+             <div id="chart-wrapper" class="hidden">
+                 <canvas id="performance-chart"></canvas>
+             </div>
+        </div>
+
         <div id="game-instances-container">
             <!-- Game instances will be dynamically inserted here -->
         </div>
@@ -185,6 +194,7 @@
                             <p>Combo: <span id="combo-${this.id}">0</span></p>
                             <p>B2B: <span id="b2b-${this.id}">0</span></p>
                         </div>
+                        <div id="heuristic-display-${this.id}" class="mt-4 text-left"></div>
                         <button id="reset-btn-${this.id}" class="reset-btn mt-4 bg-gray-600 hover:bg-gray-700 text-white font-bold py-1 px-2 rounded">Reset</button>
                     </div>
                     <div class="game-container relative flex-grow">
@@ -196,7 +206,7 @@
                         <div id="next-queue-${this.id}" class="flex flex-col items-center gap-2 mt-2"></div>
                     </div>
                 </div>`;
-            this.canvas=document.getElementById(`game-canvas-${this.id}`);this.ctx=this.canvas.getContext("2d");this.ctx.scale(BLOCK_SIZE,BLOCK_SIZE);this.holdCtx=document.getElementById(`hold-canvas-${this.id}`).getContext("2d");this.nextQueueContainer=document.getElementById(`next-queue-${this.id}`);this.nextCanvases=[];for(let e=0;e<5;e++){const t=document.createElement("canvas");t.width=80,t.height=80,this.nextQueueContainer.appendChild(t),this.nextCanvases.push(t.getContext("2d"))}this.scoreEl=document.getElementById(`score-${this.id}`);this.linesEl=document.getElementById(`lines-${this.id}`);this.levelEl=document.getElementById(`level-${this.id}`);this.comboEl=document.getElementById(`combo-${this.id}`);this.b2bEl=document.getElementById(`b2b-${this.id}`);this.gameOverEl=document.getElementById(`game-over-${this.id}`);document.getElementById(`reset-btn-${this.id}`).addEventListener("click",()=>this.reset());document.querySelector(`#instance-wrapper-${this.id} h2`).textContent=`Agent ${this.id}`
+            this.canvas=document.getElementById(`game-canvas-${this.id}`);this.ctx=this.canvas.getContext("2d");this.ctx.scale(BLOCK_SIZE,BLOCK_SIZE);this.holdCtx=document.getElementById(`hold-canvas-${this.id}`).getContext("2d");this.nextQueueContainer=document.getElementById(`next-queue-${this.id}`);this.nextCanvases=[];for(let e=0;e<5;e++){const t=document.createElement("canvas");t.width=80,t.height=80,this.nextQueueContainer.appendChild(t),this.nextCanvases.push(t.getContext("2d"))}this.scoreEl=document.getElementById(`score-${this.id}`);this.linesEl=document.getElementById(`lines-${this.id}`);this.levelEl=document.getElementById(`level-${this.id}`);this.comboEl=document.getElementById(`combo-${this.id}`);this.b2bEl=document.getElementById(`b2b-${this.id}`);this.heuristicDisplayEl=document.getElementById(`heuristic-display-${this.id}`);this.gameOverEl=document.getElementById(`game-over-${this.id}`);document.getElementById(`reset-btn-${this.id}`).addEventListener("click",()=>this.reset());document.querySelector(`#instance-wrapper-${this.id} h2`).textContent=`Agent ${this.id}`
         }
         reset(){this.isRunning=!1,this.isGameOver=!1,this.score=0,this.linesCleared=0,this.level=1,this.combo=0,this.b2b=0,this.finesseMoves=0,this.startTime=Date.now(),this.dropCounter=0,this.dasCounter=0,this.arrCounter=0,this.leftHeld=!1,this.rightHeld=!1,this.softDropActive=!1,this.lockDelayTimer=0,this.isTouchingFloor=!1,this.lockDelayResets=0,this.lastMoveWasRotation=!1,this.grid=this.createGrid(COLS,ROWS+HIDDEN_ROWS),this.pieceQueue=[],this.fillQueue(),this.spawnNewPiece(),this.holdPiece=null,this.canHold=!0,this.updateStats(),this.gameOverEl.style.display="none"; const wrapper = document.getElementById(`instance-wrapper-${this.id}`); if (wrapper) { wrapper.classList.remove('opacity-50'); } }
         createGrid(e,t){return Array.from({length:t},()=>Array(e).fill(0))}fillQueue(){const e=[...PIECE_KEYS];while(e.length){const t=e.splice(Math.floor(this.rng.next()*e.length),1)[0];this.pieceQueue.push(t)}}
@@ -236,7 +246,7 @@
         drop(){if(this.activePiece&&!this.checkCollision(this.activePiece.shape,this.activePiece.x,this.activePiece.y+1)){this.activePiece.y++,this.dropCounter=0,this.isTouchingFloor=!1}else{this.isTouchingFloor=!0;if(this.lockDelayTimer<=0)this.lockDelayTimer=LOCK_DELAY_DURATION}}
         hardDrop(){if(!this.activePiece)return;let cellsDropped=0;while(!this.checkCollision(this.activePiece.shape,this.activePiece.x,this.activePiece.y+1)){this.activePiece.y++,cellsDropped++};this.score+=2*cellsDropped;this.lockPiece()}
         hold(){if(!this.canHold||!this.activePiece)return;const heldType=this.holdPiece?this.holdPiece.type:null;this.holdPiece={type:this.activePiece.type};this.spawnNewPiece(heldType),this.canHold=!1,this.draw()}
-        update(e){if(!this.isRunning||this.isGameOver)return;this.handleHorizontalMovement();if(this.isTouchingFloor){this.lockDelayTimer-=e;if(this.lockDelayTimer<=0)this.lockPiece()}else{const t=1e3/this.level;const s=this.softDropActive?t/20:t;this.dropCounter+=e;if(this.dropCounter>s)this.drop()}this.draw()}
+        update(e){if(!this.isRunning||this.isGameOver)return;this.handleHorizontalMovement();if(this.isTouchingFloor){this.lockDelayTimer-=e;if(this.lockDelayTimer<=0)this.lockPiece()}else{const t=1e3/this.level;const s=this.softDropActive?t/20:t;this.dropCounter+=e;if(this.dropCounter>s)this.drop()}this.draw(); if(this.agent) {this.agent.updateHeuristicDisplay(this.grid);}}
         handleHorizontalMovement(){if(this.leftHeld===this.rightHeld){this.dasCounter=0}else{this.dasCounter++;if(this.dasCounter>DAS){this.arrCounter++;if(this.arrCounter>=ARR){this.arrCounter=0;this.move(this.rightHeld?1:-1)}}}}
         handleKeyDown(e){if(this.isGameOver)return;const t=["ArrowLeft","ArrowRight","ArrowDown","ArrowUp","x","X","z","Z"," ","Shift","c","C"];t.includes(e.key)&&e.preventDefault();switch(e.key){case"ArrowLeft":this.leftHeld||(this.move(-1),this.dasCounter=0),this.leftHeld=!0;break;case"ArrowRight":this.rightHeld||(this.move(1),this.dasCounter=0),this.rightHeld=!0;break;case"ArrowDown":this.softDropActive=!0,this.resetLockDelay();break;case"ArrowUp":case"x":case"X":this.rotate(1);break;case"z":case"Z":this.rotate(-1);break;case" ":this.hardDrop();break;case"Shift":case"c":case"C":this.hold()}}
         handleKeyUp(e){switch(e.key){case"ArrowLeft":this.leftHeld=!1;break;case"ArrowRight":this.rightHeld=!1;break;case"ArrowDown":this.softDropActive=!1}}
@@ -265,7 +275,6 @@
             this.game = game; this.thinkTimeout = null; this.isThinking = false;
             
             const defaultWeights = {
-                // Heuristic weights (State Evaluation)
                 aggregateHeight: -0.51,
                 maxHeight: -0.2, 
                 holes: -0.36,
@@ -274,14 +283,10 @@
                 wells: -0.72,
                 rowTransitions: -0.1,
                 columnTransitions: -0.1,
-
-                // Immediate Reward weights
                 linesClearedPower: 1.5,
                 combo: 3, 
                 holdBonus: 0.5,
                 finessePenalty: -0.2,
-
-                // Spin Bonuses
                 t_spin_single_bonus: 800,
                 t_spin_double_bonus: 1200,
                 t_spin_triple_bonus: 1600,
@@ -384,7 +389,7 @@
 
             let beam = [{ 
                 grid: initialGrid, combo: initialCombo, b2b: initialB2B,
-                score: this.evaluateBoard(initialGrid), moveSequence: [] 
+                score: this.evaluateBoard(initialGrid).totalScore, moveSequence: [] 
             }];
 
             for (let depth = 0; depth < lookaheadDepth; depth++) {
@@ -396,7 +401,7 @@
                     const possiblePlacements = this.calculatePossiblePlacements(node.grid, pieceType);
                     for (const placement of possiblePlacements) {
                         const reward = this.getImmediateReward(placement, node.combo, node.b2b);
-                        const stateValue = this.evaluateBoard(placement.grid);
+                        const { totalScore: stateValue } = this.evaluateBoard(placement.grid);
                         const totalScore = reward + (stateValue * discountFactor);
 
                         allNextStates.push({
@@ -416,28 +421,31 @@
         getImmediateReward(placement, currentCombo, currentB2B) {
             const { linesCleared, isSpin, isMini, finesse, pieceType } = placement;
             let score = 0;
-            score += Math.pow(linesCleared, this.weights.linesClearedPower || 1.5) * 100;
-            
-            if(isSpin) {
-                 if (pieceType === 'T') {
-                     if (isMini) {
-                         score += [0, this.weights.mini_t_spin_single_bonus, this.weights.mini_t_spin_double_bonus][linesCleared] || 0;
+            if(linesCleared > 0) {
+                 if (isSpin) {
+                     if (pieceType === 'T') {
+                         if (isMini) {
+                             score += [0, this.weights.mini_t_spin_single_bonus, this.weights.mini_t_spin_double_bonus][linesCleared] || 0;
+                         } else {
+                             score += [0, this.weights.t_spin_single_bonus, this.weights.t_spin_double_bonus, this.weights.t_spin_triple_bonus][linesCleared] || 0;
+                         }
                      } else {
-                         score += [0, this.weights.t_spin_single_bonus, this.weights.t_spin_double_bonus, this.weights.t_spin_triple_bonus][linesCleared] || 0;
+                         score += (this.weights[`${pieceType.toLowerCase()}_spin_bonus`] || 0);
                      }
                  } else {
-                     score += (this.weights[`${pieceType.toLowerCase()}_spin_bonus`] || 0);
+                     score += Math.pow(linesCleared, this.weights.linesClearedPower || 1.5) * 100;
                  }
+                     
+                if(linesCleared > 0 && currentB2B > 0) score *= 1.5;
+                score += currentCombo * (this.weights.combo || 2);
             }
-                 
-            if(linesCleared > 0 && currentB2B > 0) score *= 1.5;
-            score += currentCombo * (this.weights.combo || 2);
             score += finesse * (this.weights.finessePenalty || -0.2);
             return score;
         }
 
         evaluateBoard(grid) {
             const columnHeights = new Array(COLS).fill(0);
+            const heuristicValues = {};
             let aggregateHeight = 0;
             let holes = 0;
             let coveredHoles = 0;
@@ -486,16 +494,33 @@
                     if(r < ROWS + HIDDEN_ROWS - 1 && current !== down) columnTransitions++;
                 }
             }
+            
+            heuristicValues.aggregateHeight = aggregateHeight;
+            heuristicValues.maxHeight = maxHeight;
+            heuristicValues.holes = holes;
+            heuristicValues.coveredHoles = coveredHoles;
+            heuristicValues.bumpiness = bumpiness;
+            heuristicValues.wells = wells;
+            heuristicValues.rowTransitions = rowTransitions;
+            heuristicValues.columnTransitions = columnTransitions;
+            
+            let totalScore = 0;
+            for(const key in heuristicValues) {
+                totalScore += (this.weights[key] || 0) * heuristicValues[key];
+            }
 
+            return { totalScore, heuristicValues };
+        }
 
-            return (this.weights.aggregateHeight * aggregateHeight) +
-                   (this.weights.maxHeight * maxHeight) +
-                   (this.weights.holes * holes) +
-                   (this.weights.coveredHoles * coveredHoles) +
-                   (this.weights.bumpiness * bumpiness) +
-                   (this.weights.wells * wells) +
-                   (this.weights.rowTransitions * rowTransitions) +
-                   (this.weights.columnTransitions * columnTransitions);
+        updateHeuristicDisplay(grid) {
+            const { heuristicValues } = this.evaluateBoard(grid);
+            const displayEl = this.game.heuristicDisplayEl;
+            if(displayEl) {
+                 displayEl.innerHTML = `
+                    <h4 class="font-bold text-sm mb-1">Heuristics:</h4>
+                    ${Object.entries(heuristicValues).map(([key, value]) => `<p>${key.substring(0,6)}: ${value.toFixed(0)}</p>`).join('')}
+                 `;
+            }
         }
 
         calculatePossiblePlacements(grid, pieceType) {
@@ -562,17 +587,33 @@
     // --- MAIN SCRIPT ---
     let gameInstances = []; let agents = []; let humanPlayerKeyListeners = null;
     let generationCounter = 0;
+    let performanceHistory = { labels: [], topScores: [], avgScores: [] };
+    let performanceChart;
     
     function createInstanceElement(id) { const w = document.createElement('div'); w.className = 'instance-wrapper bg-gray-800/50 p-4 rounded-lg shadow-md'; w.id = `instance-wrapper-${id}`; return w; }
     
     function updateGeneration(isNew) {
-        if(isNew) generationCounter = 0;
-        else generationCounter++;
+        if(isNew) {
+             generationCounter = 0;
+             performanceHistory = { labels: [], topScores: [], avgScores: [] };
+             if(performanceChart) performanceChart.destroy();
+             initializeChart();
+        } else {
+            const scores = agents.map(a => a.game.score);
+            const topScore = Math.max(...scores);
+            const avgScore = scores.reduce((a, b) => a + b, 0) / scores.length;
+            performanceHistory.labels.push(generationCounter);
+            performanceHistory.topScores.push(topScore);
+            performanceHistory.avgScores.push(avgScore);
+            performanceChart.update();
+        }
+        generationCounter++;
         document.getElementById('generation-display').textContent = generationCounter;
     }
     
     function generateInstances(parentWeights = null, isNewPopulation = true) {
-        if(isNewPopulation) updateGeneration(true);
+        if(!isNewPopulation) updateGeneration(false);
+        else updateGeneration(true);
         
         const instancesContainer = document.getElementById('game-instances-container'); const numInstancesInput = document.getElementById('num-instances'); const seedDisplay = document.getElementById('seed-display');
         stopAll(); instancesContainer.innerHTML = ''; gameInstances = []; agents = [];
@@ -589,7 +630,6 @@
             if (!includeHuman || i > 1) {
                 let agent = new Agent(game, parentWeights && !parentPreserved ? parentWeights : null, !parentPreserved);
                 if(parentWeights && !parentPreserved) parentPreserved = true;
-
                 agents.push(agent);
                 game.agent = agent; 
             }
@@ -632,7 +672,6 @@
     }
     
     function generateFromParent() {
-        updateGeneration(false);
         const parentInput = document.getElementById('parent-weights-input');
         try {
             if (!parentInput.value) { alert("Parent weights input is empty."); return; }
@@ -641,6 +680,33 @@
         } catch (e) {
             alert("Invalid JSON in parent weights input."); console.error("Error parsing parent DNA:", e);
         }
+    }
+
+    function initializeChart() {
+         const ctx = document.getElementById('performance-chart').getContext('2d');
+         performanceChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: performanceHistory.labels,
+                datasets: [{
+                    label: 'Top Score',
+                    data: performanceHistory.topScores,
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    tension: 0.1
+                },
+                {
+                    label: 'Average Score',
+                    data: performanceHistory.avgScores,
+                    borderColor: 'rgba(255, 99, 132, 1)',
+                    tension: 0.1
+                }]
+            },
+            options: {
+                scales: {
+                    y: { beginAtZero: true }
+                }
+            }
+         });
     }
 
     // --- EVENT LISTENERS ---
@@ -666,12 +732,20 @@
         else speedValue.textContent = 'Instant';
     };
     
+    document.getElementById('toggle-chart-btn').addEventListener('click', () => {
+        document.getElementById('chart-wrapper').classList.toggle('hidden');
+    });
+    
     document.getElementById('start-all-btn').addEventListener('click', startAll);
     document.getElementById('stop-all-btn').addEventListener('click', stopAll);
     document.getElementById('generate-instances-btn').addEventListener('click', () => generateInstances(null, true));
     document.getElementById('extract-weights-btn').addEventListener('click', extractBestAgentWeights);
     document.getElementById('permutate-btn').addEventListener('click', generateFromParent);
-    window.onload = () => generateInstances(null, true);
+    
+    window.onload = () => {
+        generateInstances(null, true);
+        initializeChart();
+    };
     </script>
 </body>
 </html>
