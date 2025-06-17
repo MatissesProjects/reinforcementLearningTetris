@@ -116,15 +116,12 @@
                     <button id="permutate-btn" class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-4 rounded-lg w-full mt-2">Generate from Parent DNA</button>
                     <textarea id="parent-dna-input" class="mt-4 p-2 rounded-md w-full" placeholder="Paste parent agent's DNA here..."></textarea>
                     <button id="extract-dna-btn" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg w-full mt-2">Extract Best Agent's DNA</button>
-                    <div id="dna-display" class="mt-2 p-2 rounded-md text-left hidden"></div>
+                    <textarea id="dna-display" class="mt-2 p-2 rounded-md text-left hidden" readonly></textarea>
                 </div>
                  <div>
                      <h3 class="text-lg font-bold mb-2">AI Parameters</h3>
                      <div class="space-y-3 text-sm text-left">
-                        <div>
-                             <label for="action-exploration-rate">Action Exploration Rate: <span id="action-exploration-rate-value">0.10</span></label>
-                             <input type="range" id="action-exploration-rate" min="0" max="1.0" step="0.01" value="0.1">
-                        </div>
+                        <h4 class="font-bold mt-4 border-b border-gray-600">Live Parameters</h4>
                         <div>
                              <label for="lookahead-depth">Lookahead Depth: <span id="lookahead-depth-value">3</span></label>
                              <input type="range" id="lookahead-depth" min="1" max="5" step="1" value="3">
@@ -133,21 +130,34 @@
                             <label for="beam-width">Beam Width: <span id="beam-width-value">5</span></label>
                             <input type="range" id="beam-width" min="1" max="10" step="1" value="5">
                         </div>
+                         <div>
+                            <label for="game-speed">AI Speed: <span id="game-speed-value">Normal</span></label>
+                            <input type="range" id="game-speed" min="0" max="1000" step="10" value="500">
+                        </div>
+                        <h4 class="font-bold mt-4 border-b border-gray-600">Evolution Parameters</h4>
+                        <div>
+                            <label for="min-nn-influence">Min. NN Influence: <span id="min-nn-influence-value">0.05</span></label>
+                            <input type="range" id="min-nn-influence" min="0" max="1.0" step="0.01" value="0.05">
+                        </div>
+                        <div>
+                             <label for="action-exploration-rate">Action Exploration Rate: <span id="action-exploration-rate-value">0.10</span></label>
+                             <input type="range" id="action-exploration-rate" min="0" max="1.0" step="0.01" value="0.1">
+                        </div>
                         <div>
                             <label for="discount-factor">Discount Factor (γ): <span id="discount-factor-value">0.95</span></label>
                             <input type="range" id="discount-factor" min="0.5" max="1.0" step="0.01" value="0.95">
                         </div>
                         <div>
-                            <label for="mutation-rate">Mutation Rate: <span id="mutation-rate-value">0.20</span></label>
+                            <label for="mutation-rate">Weight Mutation Rate: <span id="mutation-rate-value">0.20</span></label>
                             <input type="range" id="mutation-rate" min="0.01" max="1.0" step="0.01" value="0.2">
                         </div>
                         <div>
-                            <label for="mutation-amount">Mutation Amount: <span id="mutation-amount-value">0.50</span></label>
+                            <label for="mutation-amount">Weight Mutation Amount: <span id="mutation-amount-value">0.50</span></label>
                             <input type="range" id="mutation-amount" min="0.01" max="1.0" step="0.01" value="0.5">
                         </div>
-                        <div>
-                            <label for="game-speed">AI Speed: <span id="game-speed-value">Normal</span></label>
-                            <input type="range" id="game-speed" min="0" max="1000" step="10" value="500">
+                         <div>
+                             <label for="topology-mutation-rate">Topology Mutation Rate: <span id="topology-mutation-rate-value">0.20</span></label>
+                             <input type="range" id="topology-mutation-rate" min="0" max="0.5" step="0.01" value="0.2">
                         </div>
                      </div>
                  </div>
@@ -263,11 +273,7 @@
             this.isRunning=!1,this.isGameOver=!0,this.activePiece=null,this.gameOverEl.style.display="flex";
             if (this.agent) { this.agent.finalFitness = this.agent.calculateFitness(this); }
             console.log(`Game ${this.id} Over! Final Score: ${this.score}`);
-            const wrapper=document.getElementById(`instance-wrapper-${this.id}`);
-            if(wrapper && wrapper.parentElement){
-                wrapper.parentElement.appendChild(wrapper);
-                wrapper.classList.add("opacity-50");
-            }
+            setTimeout(checkAllGameOver, 100);
         }
         start(){if(this.isGameOver)this.reset();if(!this.isRunning){this.isRunning=!0,this.lastTime=0,requestAnimationFrame(this.gameLoop.bind(this))}}stop(){this.isRunning=!1}
         gameLoop(e){if(this.isRunning){const t=e-(this.lastTime||e);this.lastTime=e,this.update(t),requestAnimationFrame(this.gameLoop.bind(this))}}
@@ -287,7 +293,7 @@
                     level.weights[i][j] = (Math.random() * 2 - 1) * Math.sqrt(1 / inputCount);
                 }
             }
-            for (let i = 0; i < level.biases.length; i++) { level.biases[i] = 0; }
+            for (let i = 0; i < level.biases.length; i++) { level.biases[i] = (Math.random() * 2 - 1); }
         }
         static feedForward(givenInputs, level) {
             level.inputs = givenInputs;
@@ -334,8 +340,8 @@
                 }
             }
         }
-        // FIX: Re-implementing the missing mutate function
         static mutate(network, mutationRate, mutationAmount) {
+            if (!network || !network.levels) return;
             network.levels.forEach(level => {
                 for (let i = 0; i < level.biases.length; i++) {
                     if (Math.random() < mutationRate) {
@@ -377,6 +383,9 @@
                 };
             }
             
+            // FIX: Mutate DNA *before* building the brain from it
+            if (shouldMutate) { this.mutate(); }
+            
             const featureCount = 8;
             const layerSizes = [featureCount, ...this.dna.hiddenLayers, this.weightNames.length];
             this.brain = new NeuralNetwork(layerSizes);
@@ -384,34 +393,40 @@
             if(this.dna.networkDNA) {
                  NeuralNetwork.loadDNA(this.brain, this.dna.networkDNA);
             }
-
-            if (shouldMutate) { this.mutate(); }
         }
 
         mutate() {
             const mutationRate = parseFloat(document.getElementById("mutation-rate").value);
             const mutationAmount = parseFloat(document.getElementById("mutation-amount").value);
+            const topologyMutationRate = parseFloat(document.getElementById("topology-mutation-rate").value);
             
-            NeuralNetwork.mutate(this.brain, mutationRate, mutationAmount);
-
             // FIX: Use additive mutation for influence so it can grow effectively
             if (Math.random() < mutationRate) {
                 this.dna.nn_influence += (Math.random() * 2 - 1) * (mutationAmount * 0.1);
                 this.dna.nn_influence = Math.max(0, Math.min(1, this.dna.nn_influence));
             }
             
-            // FIX: Correctly check if topology should mutate
-            if (Math.random() < 0.05) { // Increased chance for visibility
-                if (Math.random() < 0.8 && this.dna.hiddenLayers.length > 0) { // Add neuron
+            let topologyChanged = false;
+            if (Math.random() < topologyMutationRate) {
+                if (Math.random() < 0.5 && this.dna.hiddenLayers.length > 0) { // 50% chance to add neuron
                     const layerIndex = Math.floor(Math.random() * this.dna.hiddenLayers.length);
                     this.dna.hiddenLayers[layerIndex]++;
-                    this.dna.networkDNA = null; 
-                    console.log(`Agent ${this.game.id} added a neuron. New arch: [${this.dna.hiddenLayers}]`);
-                } else { // Add layer
+                } else { // 50% chance to add layer
                     this.dna.hiddenLayers.push(Math.floor(Math.random() * 5) + 3);
-                    this.dna.networkDNA = null;
-                     console.log(`Agent ${this.game.id} added a layer. New arch: [${this.dna.hiddenLayers}]`);
                 }
+                topologyChanged = true;
+                console.log(`Agent ${this.game.id} topology → [${this.dna.hiddenLayers}]`);
+            }
+            
+            // FIX: Rebuild brain if topology changed, otherwise mutate existing weights
+            if (topologyChanged) {
+                const featureCount = 8;
+                const outputCount  = this.weightNames.length;
+                const layerSizes   = [ featureCount, ...this.dna.hiddenLayers, outputCount ];
+                this.brain = new NeuralNetwork(layerSizes);
+                this.dna.networkDNA = null; // Invalidate old DNA
+            } else if (this.brain) { // Only mutate if brain exists
+                 NeuralNetwork.mutate(this.brain, mutationRate, mutationAmount);
             }
         }
 
@@ -422,8 +437,8 @@
 
         calculateFitness(game) {
             let fitness = game.score;
-            fitness += Math.pow(game.maxCombo, 2) * 100; // Heavily reward high combos
-            fitness += game.tSpins * 5000; // Heavily reward T-Spins
+            fitness += Math.pow(game.maxCombo, 2) * 100;
+            fitness += game.tSpins * 5000;
             return fitness;
         }
         
@@ -711,6 +726,22 @@
     function startAll() { gameInstances.forEach(game => game.start()); if (document.getElementById('ai-enabled-checkbox').checked) { agents.forEach(agent => agent.start()); } }
     function stopAll() { gameInstances.forEach(game => game.stop()); agents.forEach(agent => agent.stop()); }
     
+    function checkAllGameOver() {
+        if (gameInstances.every(g => g.isGameOver)) {
+            let bestAgent = agents[0];
+            let bestFitness = -Infinity;
+            agents.forEach(a => {
+                const fitness = a.calculateFitness(a.game);
+                if (fitness > bestFitness) {
+                    bestFitness = fitness;
+                    bestAgent = a;
+                }
+            });
+            const parentDNA = bestAgent.getDNA();
+            generateInstances(parentDNA, false);
+        }
+    }
+
     function extractBestAgentDNA() {
         const dnaDisplay = document.getElementById('dna-display');
         const parentInput = document.getElementById('parent-dna-input');
@@ -787,6 +818,7 @@
     setupSlider('discount-factor', 'discount-factor-value', true);
     setupSlider('mutation-rate', 'mutation-rate-value', true);
     setupSlider('mutation-amount', 'mutation-amount-value', true);
+    setupSlider('topology-mutation-rate', 'topology-mutation-rate-value', true);
     
     document.getElementById('game-speed').oninput = function() {
         const speed = parseInt(this.value, 10);
