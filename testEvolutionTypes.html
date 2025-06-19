@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tetris AI v9.1 - Stable Elitism</title>
+    <title>Tetris AI v12 - Elitist Specialist Preservation</title>
     <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -350,6 +350,7 @@
             this.thinkTimeout = null;
             this.isThinking = false;
             this.finalFitness = 0;
+            this.previousFeatures = null;
             this.expertTypes = ['GENERALIST', 'T_SPIN', 'I_PIECE', 'COMBO', 'DOWNSTACK', 'ALL_CLEAR', 'FINESSE', 'WELL_BUILDER'];
 
             this.expertDNA = expertParentDNA ? JSON.parse(JSON.stringify(expertParentDNA)) : this.getInitialExpertDNA();
@@ -392,7 +393,9 @@
 
         getInitialExpertDNA() {
              const baseWeights = {
-                aggregateHeight: -0.51, maxHeight: -0.2, holes: -0.36, coveredHoles: -2.5,
+                aggregateHeight: -0.51, maxHeight: -0.2, 
+                holes: -1.0, 
+                coveredHoles: -15.0,
                 bumpiness: -0.35, wells: -0.72, rowTransitions: -0.1, columnTransitions: -0.1,
                 tSpinSetups: 0, pieceCount: 0, overhangs: 0, wellDepth: 0, isWellBlocked: 0, imminentClears: 0, dangerZonePenalty: 0, 
                 heightStandardDeviation: 0, spirePenalty: 0,
@@ -403,7 +406,7 @@
             const tSpinWeights = { ...baseWeights, holes: -2.0, bumpiness: -0.5, tSpinSetups: 6.0, overhangs: 4.0, linesCleared: 1.0, b2b: 6.0, heightStandardDeviation: -1.0, spirePenalty: -3.0 };
             const iPieceWeights = { ...baseWeights, aggregateHeight: -0.8, maxHeight: -0.5, linesCleared: 0, tetrisBonus: 10.0, heightStandardDeviation: -0.5, spirePenalty: -2.0 };
             const comboWeights = { ...baseWeights, aggregateHeight: -0.1, linesCleared: -0.5, combo: 8.0, b2b: 1.0, heightStandardDeviation: -1.2, spirePenalty: -1.0 };
-            const downstackWeights = { ...baseWeights, aggregateHeight: -2.0, holes: -5.0, coveredHoles: -8.0, linesCleared: 3.0, combo: -1.0, dangerZonePenalty: -10.0, heightStandardDeviation: -0.5 };
+            const downstackWeights = { ...baseWeights, aggregateHeight: -4.0, holes: -8.0, coveredHoles: -20.0, linesCleared: 8.0, combo: -1.0, dangerZonePenalty: -10.0, heightStandardDeviation: -0.5 };
             const allClearWeights = { ...baseWeights, pieceCount: -25.0, linesCleared: 5.0, holes: -2.0 };
             const finesseWeights = { ...baseWeights, finessePenalty: 10.0, aggregateHeight: -1.0, holes: -1.0, linesCleared: 0.5 };
             const wellBuilderWeights = { ...baseWeights, aggregateHeight: -0.1, holes: -2.0, wellDepth: 12.0, isWellBlocked: -25.0, tetrisBonus: 12.0, linesCleared: -2.0, spirePenalty: -5.0 };
@@ -497,7 +500,21 @@
             try {
                 let expertSwitched = false;
                 const currentFeatures = this.getBoardFeatures(this.game.grid);
-                if (currentFeatures.tSpinSetups > 0 && this.game.activePiece.type === 'T' && this.currentExpert !== 'T_SPIN') {
+                
+                // ADVANCEMENT: Priority Interrupt System
+                // 1. Damage Control Interrupt
+                if (this.previousFeatures && this.currentExpert !== 'DOWNSTACK') {
+                    const holeIncrease = currentFeatures.holes - this.previousFeatures.holes;
+                    if (holeIncrease >= 2) {
+                        console.log(`Agent ${this.game.id}: Damage Control! Holes increased by ${holeIncrease}. Switching to DOWNSTACK.`);
+                        this.currentExpert = 'DOWNSTACK';
+                        this.expertStepsRemaining = this.expertDNA.expertDna['DOWNSTACK'].persistence;
+                        expertSwitched = true;
+                    }
+                }
+                
+                // 2. T-Spin Interrupt
+                if (!expertSwitched && currentFeatures.tSpinSetups > 0 && this.game.activePiece.type === 'T' && this.currentExpert !== 'T_SPIN') {
                     this.currentExpert = 'T_SPIN';
                     this.expertStepsRemaining = this.expertDNA.expertDna['T_SPIN'].persistence;
                     expertSwitched = true;
@@ -529,6 +546,9 @@
                 if (useHold) { await this.game.hold(); } 
                 else if (chosenSequence?.moveSequence.length > 0 && this.game.activePiece) { await this.executeMove(chosenSequence.moveSequence[0]); } 
                 else if (this.game.activePiece) { this.game.hardDrop(); }
+
+                this.previousFeatures = this.getBoardFeatures(this.game.grid);
+
             } finally {
                 this.isThinking = false;
                 if(!this.game.isGameOver && this.game.isRunning) {
@@ -589,44 +609,54 @@
         }
         
        getBoardFeatures(grid, returnAsArray = false) {
-            let aggregateHeight = 0, holes = 0, coveredHoles = 0, bumpiness = 0;
-            let wells = 0, rowTransitions = 0, columnTransitions = 0, tSpinSetups = 0;
             const columnHeights = new Array(COLS).fill(0);
-
+            let aggregateHeight = 0; let maxHeight = 0;
             for (let c = 0; c < COLS; c++) {
-                let foundTop = false;
                 for (let r = 0; r < grid.length; r++) {
                     if (grid[r][c] !== 0) {
-                        if (!foundTop) { columnHeights[c] = (ROWS + HIDDEN_ROWS) - r; foundTop = true; }
-                    } else if (foundTop) {
+                        const height = (ROWS + HIDDEN_ROWS) - r;
+                        columnHeights[c] = height;
+                        break; 
+                    }
+                }
+                aggregateHeight += columnHeights[c];
+                if (columnHeights[c] > maxHeight) maxHeight = columnHeights[c];
+            }
+
+            // HEURISTIC REFINEMENT: More accurate hole detection logic.
+            let holes = 0; let coveredHoles = 0;
+            for (let c = 0; c < COLS; c++) {
+                let colHasBlock = false;
+                for (let r = grid.length - 1; r >= 0; r--) {
+                    if (grid[r][c] !== 0) { colHasBlock = true; } 
+                    else if (colHasBlock) {
                         holes++;
-                        if (columnHeights[c] > 0) coveredHoles++;
+                        if (r > 0 && grid[r - 1][c] !== 0) coveredHoles++;
                     }
                 }
             }
-
-            for (let r = 1; r < ROWS + HIDDEN_ROWS - 1; r++) {
-                for (let c = 1; c < COLS - 1; c++) {
-                    const isHole = grid[r][c] === 0, isUpSolid = grid[r-1]?.[c] !== 0, isLeftSolid = grid[r][c-1] !== 0, isRightSolid = grid[r][c+1] !== 0, isDownOpen = grid[r+1]?.[c] === 0;
-                    if (isHole && isLeftSolid && isRightSolid && isUpSolid && isDownOpen) if (grid[r+1]?.[c-1] === 0 || grid[r+1]?.[c+1] === 0) tSpinSetups++;
-                }
+            
+            let bumpiness = 0;
+            for (let i = 0; i < COLS - 1; i++) bumpiness += Math.abs(columnHeights[i] - columnHeights[i + 1]);
+            
+            let tSpinSetups = 0;
+            for (let r = 1; r < ROWS + HIDDEN_ROWS - 1; r++) for (let c = 1; c < COLS - 1; c++) {
+                const isHole = grid[r][c] === 0, isUpSolid = grid[r-1]?.[c] !== 0, isLeftSolid = grid[r][c-1] !== 0, isRightSolid = grid[r][c+1] !== 0, isDownOpen = grid[r+1]?.[c] === 0;
+                if (isHole && isLeftSolid && isRightSolid && isUpSolid && isDownOpen) if (grid[r+1]?.[c-1] === 0 || grid[r+1]?.[c+1] === 0) tSpinSetups++;
             }
             
-            const maxHeight = Math.max(...columnHeights);
+            let wells = 0;
             for (let i = 0; i < COLS; i++) {
-                aggregateHeight += columnHeights[i];
-                if (i > 0) bumpiness += Math.abs(columnHeights[i] - columnHeights[i - 1]);
                 const leftHeight = (i === 0) ? (ROWS + HIDDEN_ROWS) : columnHeights[i - 1];
                 const rightHeight = (i === COLS - 1) ? (ROWS + HIDDEN_ROWS) : columnHeights[i + 1];
                 if (leftHeight > columnHeights[i] && rightHeight > columnHeights[i]) wells += Math.min(leftHeight, rightHeight) - columnHeights[i];
             }
 
-            for (let r = 0; r < ROWS + HIDDEN_ROWS; r++) {
-                for (let c = 0; c < COLS; c++) {
-                    const current = grid[r]?.[c] > 0, right = grid[r]?.[c + 1] > 0, down = grid[r + 1]?.[c] > 0;
-                    if (c < COLS - 1 && current !== right) rowTransitions++;
-                    if (r < ROWS + HIDDEN_ROWS - 1 && current !== down) columnTransitions++;
-                }
+            let rowTransitions = 0, columnTransitions = 0;
+            for (let r = 0; r < ROWS + HIDDEN_ROWS; r++) for (let c = 0; c < COLS; c++) {
+                const current = grid[r]?.[c] > 0, right = grid[r]?.[c + 1] > 0, down = grid[r + 1]?.[c] > 0;
+                if (c < COLS - 1 && current !== right) rowTransitions++;
+                if (r < ROWS + HIDDEN_ROWS - 1 && current !== down) columnTransitions++;
             }
             
             let pieceCount = 0;
@@ -767,12 +797,14 @@
     let generationCounter = 0;
     let performanceHistory = { labels: [], topScores: [], avgScores: [] };
     let performanceChart;
+    let allStarChampions = {}; // ADVANCEMENT: Persist the best-ever specialists
     
     function createInstanceElement(id) { const w = document.createElement('div'); w.className = 'instance-wrapper bg-gray-800/50 p-4 rounded-lg shadow-md'; w.id = `instance-wrapper-${id}`; return w; }
     
     function updateGeneration(isNew) {
         if(isNew) {
              generationCounter = 0;
+             allStarChampions = {}; // Reset champions for a new population
              performanceHistory = { labels: [], topScores: [], avgScores: [] };
              if(performanceChart) performanceChart.destroy();
              initializeChart();
@@ -861,30 +893,53 @@
         });
 
         console.log("Finding 'All-Star' team of expert policies...");
-        const bestOverallAgent = agents.reduce((best, current) => (current.finalFitness > best.finalFitness ? current : best), agents[0]);
-        const allStarExpertDNA = JSON.parse(JSON.stringify(bestOverallAgent.expertDNA));
+        const bestOverallAgent = agents.reduce((best, current) => (current.finalFitness > best.finalFitness ? current : best));
+        const nextGenerationExpertDNA = JSON.parse(JSON.stringify(bestOverallAgent.getDNA().expertDNA));
+        let newAllStarChampions = {};
         
-        const tSpinChampion = agents.reduce((best, current) => (current.game.tSpins > best.game.tSpins ? current : best));
-        allStarExpertDNA.expertDna['T_SPIN'] = tSpinChampion.getDNA().expertDNA.expertDna['T_SPIN'];
-        console.log(`T-Spin champion: Agent ${tSpinChampion.game.id} with ${tSpinChampion.game.tSpins} T-Spins.`);
+        // Helper function for elitism
+        const findChampion = (metric, expertName) => {
+            const currentChampion = agents.reduce((best, current) => (current.game[metric] > best.game[metric] ? current : best));
+            const oldChampion = allStarChampions[expertName];
 
-        const comboChampion = agents.reduce((best, current) => (current.game.maxCombo > best.game.maxCombo ? current : best));
-        allStarExpertDNA.expertDna['COMBO'] = comboChampion.getDNA().expertDNA.expertDna['COMBO'];
-        console.log(`Combo champion: Agent ${comboChampion.game.id} with a max combo of ${comboChampion.game.maxCombo}.`);
+            if (oldChampion && currentChampion.game[metric] < oldChampion.score) {
+                console.log(`${expertName} champion regressed. Keeping previous version (Score: ${oldChampion.score}).`);
+                nextGenerationExpertDNA.expertDna[expertName] = oldChampion.dna;
+                newAllStarChampions[expertName] = oldChampion;
+            } else {
+                console.log(`New ${expertName} champion: Agent ${currentChampion.game.id} (Score: ${currentChampion.game[metric]}).`);
+                const champDNA = currentChampion.getDNA().expertDNA.expertDna[expertName];
+                nextGenerationExpertDNA.expertDna[expertName] = champDNA;
+                newAllStarChampions[expertName] = { dna: champDNA, score: currentChampion.game[metric] };
+            }
+        };
+
+        findChampion('tSpins', 'T_SPIN');
+        findChampion('maxCombo', 'COMBO');
+        findChampion('tetrisesCleared', 'I_PIECE');
+        findChampion('tetrisesCleared', 'WELL_BUILDER');
         
-        const tetrisChampion = agents.reduce((best, current) => (current.game.tetrisesCleared > best.game.tetrisesCleared ? current : best));
-        allStarExpertDNA.expertDna['I_PIECE'] = tetrisChampion.getDNA().expertDNA.expertDna['I_PIECE'];
-        allStarExpertDNA.expertDna['WELL_BUILDER'] = tetrisChampion.getDNA().expertDNA.expertDna['WELL_BUILDER'];
-        console.log(`Tetris champion: Agent ${tetrisChampion.game.id} with ${tetrisChampion.game.tetrisesCleared} Tetrises.`);
-
+        // For downstacker, lower is better, so the logic is inverted.
         const downstackChampion = agents.reduce((best, current) => (current.getBoardFeatures(current.game.grid).aggregateHeight < best.getBoardFeatures(best.game.grid).aggregateHeight ? current : best));
-        allStarExpertDNA.expertDna['DOWNSTACK'] = downstackChampion.getDNA().expertDNA.expertDna['DOWNSTACK'];
-        console.log(`Downstack champion: Agent ${downstackChampion.game.id}.`);
+        const oldDownstackChampion = allStarChampions['DOWNSTACK'];
+        const currentDownstackScore = downstackChampion.getBoardFeatures(downstackChampion.game.grid).aggregateHeight;
+        if(oldDownstackChampion && currentDownstackScore > oldDownstackChampion.score) {
+             console.log(`Downstack champion regressed. Keeping previous version.`);
+             nextGenerationExpertDNA.expertDna['DOWNSTACK'] = oldDownstackChampion.dna;
+             newAllStarChampions['DOWNSTACK'] = oldDownstackChampion;
+        } else {
+            console.log(`New Downstack champion: Agent ${downstackChampion.game.id}.`);
+            const champDNA = downstackChampion.getDNA().expertDNA.expertDna['DOWNSTACK'];
+            nextGenerationExpertDNA.expertDna['DOWNSTACK'] = champDNA;
+            newAllStarChampions['DOWNSTACK'] = { dna: champDNA, score: currentDownstackScore };
+        }
+        
+        // Update the global champions record for the next generation
+        allStarChampions = newAllStarChampions;
 
-        // BUG FIX: The variable was named bestOverallAgent, not bestAgent.
         console.log(`Best overall agent from gen ${generationCounter} was Agent ${bestOverallAgent.game.id} with fitness ${bestOverallAgent.finalFitness}.`);
         
-        generateInstances(allStarExpertDNA, newGlobalGatingDNA, false);
+        generateInstances(nextGenerationExpertDNA, newGlobalGatingDNA, false);
         setTimeout(startAll, 500);
     }
 
@@ -896,9 +951,9 @@
     }
 
     function extractBestAgentDNA() {
+        if (agents.length === 0) { return; }
         const dnaDisplay = document.getElementById('dna-display');
         const parentInput = document.getElementById('parent-dna-input');
-        if (agents.length === 0) { dnaDisplay.textContent = "No agents available."; dnaDisplay.classList.remove('hidden'); return; }
         const bestAgent = agents.reduce((best, current) => (current.finalFitness > best.finalFitness ? current : best), agents[0]);
         if (bestAgent) {
             const dnaString = JSON.stringify(bestAgent.getDNA(), null, 2);
