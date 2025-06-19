@@ -28,6 +28,12 @@ reinforcement learning is a way of doing learning without a human in the loop, q
 
 ![layout](pictures/currentLayout.png)
 
+# Scoring and logic
+
+https://tetris.wiki/TETR.IO#Solo
+
+Then after playing through the total score is calculated and the agent that is the best can be extracted and used as the next generations parent
+
 # Genetic Algorithm
 currently tracking and evolving the following metrics
 
