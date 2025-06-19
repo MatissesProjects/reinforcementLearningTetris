@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tetris AI v12 - Elitist Specialist Preservation</title>
+    <title>Tetris AI v15 - Stable Hybrid Evolution</title>
     <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -351,7 +351,7 @@
             this.isThinking = false;
             this.finalFitness = 0;
             this.previousFeatures = null;
-            this.expertTypes = ['GENERALIST', 'T_SPIN', 'I_PIECE', 'COMBO', 'DOWNSTACK', 'ALL_CLEAR', 'FINESSE', 'WELL_BUILDER'];
+            this.expertTypes = ['GENERALIST', 'T_SPIN', 'I_PIECE', 'COMBO', 'DOWNSTACK', 'ALL_CLEAR', 'WELL_BUILDER'];
 
             this.expertDNA = expertParentDNA ? JSON.parse(JSON.stringify(expertParentDNA)) : this.getInitialExpertDNA();
             this.gatingDNA = globalGatingDNA ? JSON.parse(JSON.stringify(globalGatingDNA)) : this.getInitialGatingDNA();
@@ -387,28 +387,26 @@
             return {
                 gatingHiddenLayers: [16, 12],
                 gatingNetworkDNA: null,
-                exploration_biases: [0, 0, 0, 0, 0, 0, 0, 0], 
+                exploration_biases: [0, 0, 0, 0, 0, 0, 0], 
             };
         }
 
         getInitialExpertDNA() {
              const baseWeights = {
-                aggregateHeight: -0.51, maxHeight: -0.2, 
-                holes: -1.0, 
-                coveredHoles: -15.0,
+                aggregateHeight: -0.51, maxHeight: -0.2, holes: -1.0, coveredHoles: -15.0,
                 bumpiness: -0.35, wells: -0.72, rowTransitions: -0.1, columnTransitions: -0.1,
-                tSpinSetups: 0, pieceCount: 0, overhangs: 0, wellDepth: 0, isWellBlocked: 0, imminentClears: 0, dangerZonePenalty: 0, 
+                spinOpportunities: 0, pieceCount: 0, overhangs: 0, wellDepth: 0, isWellBlocked: 0, imminentClears: 0, dangerZonePenalty: 0, 
                 heightStandardDeviation: 0, spirePenalty: 0,
-                linesCleared: 1, combo: 3, b2b: 4, finessePenalty: -0.2, tetrisBonus: 8.0
+                linesCleared: 1, combo: 3, b2b: 4, finessePenalty: -0.15, 
+                spinExecutionBonus: 20, tetrisBonus: 8.0
             };
 
             const generalistWeights = { ...baseWeights, bumpiness: -0.5, imminentClears: 0.5, dangerZonePenalty: -20.0, heightStandardDeviation: -1.5, spirePenalty: -2.0 };
-            const tSpinWeights = { ...baseWeights, holes: -2.0, bumpiness: -0.5, tSpinSetups: 6.0, overhangs: 4.0, linesCleared: 1.0, b2b: 6.0, heightStandardDeviation: -1.0, spirePenalty: -3.0 };
+            const tSpinWeights = { ...baseWeights, holes: -2.0, bumpiness: -0.5, spinOpportunities: 8.0, overhangs: 4.0, linesCleared: 1.0, b2b: 6.0, heightStandardDeviation: -1.0, spirePenalty: -3.0, spinExecutionBonus: 25.0 };
             const iPieceWeights = { ...baseWeights, aggregateHeight: -0.8, maxHeight: -0.5, linesCleared: 0, tetrisBonus: 10.0, heightStandardDeviation: -0.5, spirePenalty: -2.0 };
             const comboWeights = { ...baseWeights, aggregateHeight: -0.1, linesCleared: -0.5, combo: 8.0, b2b: 1.0, heightStandardDeviation: -1.2, spirePenalty: -1.0 };
             const downstackWeights = { ...baseWeights, aggregateHeight: -4.0, holes: -8.0, coveredHoles: -20.0, linesCleared: 8.0, combo: -1.0, dangerZonePenalty: -10.0, heightStandardDeviation: -0.5 };
             const allClearWeights = { ...baseWeights, pieceCount: -25.0, linesCleared: 5.0, holes: -2.0 };
-            const finesseWeights = { ...baseWeights, finessePenalty: 10.0, aggregateHeight: -1.0, holes: -1.0, linesCleared: 0.5 };
             const wellBuilderWeights = { ...baseWeights, aggregateHeight: -0.1, holes: -2.0, wellDepth: 12.0, isWellBlocked: -25.0, tetrisBonus: 12.0, linesCleared: -2.0, spirePenalty: -5.0 };
 
             return {
@@ -419,7 +417,6 @@
                     'COMBO': { hiddenLayers: [12, 6], networkDNA: null, weights: comboWeights, persistence: 4 },
                     'DOWNSTACK': { hiddenLayers: [12, 6], networkDNA: null, weights: downstackWeights, persistence: 5 },
                     'ALL_CLEAR': { hiddenLayers: [12, 6], networkDNA: null, weights: allClearWeights, persistence: 4 },
-                    'FINESSE': { hiddenLayers: [12, 6], networkDNA: null, weights: finesseWeights, persistence: 2 },
                     'WELL_BUILDER': { hiddenLayers: [12, 6], networkDNA: null, weights: wellBuilderWeights, persistence: 8 }
                 }
             };
@@ -445,7 +442,9 @@
         getDNA() {
             const currentExpertDNA = JSON.parse(JSON.stringify(this.expertDNA));
             for(const expert of this.expertTypes) {
-                currentExpertDNA.expertDna[expert].networkDNA = NeuralNetwork.getDNA(this.expertBrains[expert]);
+                if(this.expertBrains[expert]) {
+                    currentExpertDNA.expertDna[expert].networkDNA = NeuralNetwork.getDNA(this.expertBrains[expert]);
+                }
             }
             const currentGatingDNA = JSON.parse(JSON.stringify(this.gatingDNA));
             currentGatingDNA.gatingNetworkDNA = NeuralNetwork.getDNA(this.gatingNetwork);
@@ -501,8 +500,6 @@
                 let expertSwitched = false;
                 const currentFeatures = this.getBoardFeatures(this.game.grid);
                 
-                // ADVANCEMENT: Priority Interrupt System
-                // 1. Damage Control Interrupt
                 if (this.previousFeatures && this.currentExpert !== 'DOWNSTACK') {
                     const holeIncrease = currentFeatures.holes - this.previousFeatures.holes;
                     if (holeIncrease >= 2) {
@@ -513,11 +510,13 @@
                     }
                 }
                 
-                // 2. T-Spin Interrupt
-                if (!expertSwitched && currentFeatures.tSpinSetups > 0 && this.game.activePiece.type === 'T' && this.currentExpert !== 'T_SPIN') {
-                    this.currentExpert = 'T_SPIN';
-                    this.expertStepsRemaining = this.expertDNA.expertDna['T_SPIN'].persistence;
-                    expertSwitched = true;
+                if (!expertSwitched && currentFeatures.spinOpportunities > 0 && this.currentExpert !== 'T_SPIN') {
+                    if(['T','L','J','S','Z'].includes(this.game.activePiece.type)){
+                        console.log(`Agent ${this.game.id}: Spin opportunity detected! Forcing switch to T_SPIN expert.`);
+                        this.currentExpert = 'T_SPIN';
+                        this.expertStepsRemaining = this.expertDNA.expertDna['T_SPIN'].persistence;
+                        expertSwitched = true;
+                    }
                 }
 
                 if (!expertSwitched && this.expertStepsRemaining <= 0) this.chooseNewExpert();
@@ -587,24 +586,27 @@
         }
         
         getImmediateReward(placement, currentCombo, currentB2B) {
-            const { linesCleared, isSpin, isMini, finesse, pieceType } = placement;
+            const { linesCleared, isSpin, finesse, pieceType } = placement;
             let score = 0;
             const expertWeights = this.expertDNA.expertDna[this.currentExpert].weights;
 
+            if (isSpin && linesCleared > 0) {
+                 score += (expertWeights.spinExecutionBonus || 20) * 100 * linesCleared;
+            } else if (linesCleared === 4) {
+                 score += (expertWeights.tetrisBonus || 8) * 100;
+            } else if (linesCleared > 0) {
+                 score += (expertWeights.linesCleared || 1) * 100 * Math.pow(linesCleared, 2);
+            }
+            
+            if (currentB2B > 0 && (linesCleared >= 4 || (isSpin && linesCleared > 0))) {
+                score += (expertWeights.b2b || 1) * 50 * currentB2B;
+            }
             if (linesCleared > 0) {
-                if (isSpin && pieceType === 'T') score += (expertWeights.linesCleared || 1) * 1000 * linesCleared;
-                else if (linesCleared === 4) score += (expertWeights.tetrisBonus || 8) * 100;
-                else score += (expertWeights.linesCleared || 1) * 100 * Math.pow(linesCleared, 2);
-                if (currentB2B > 0 && (linesCleared >= 4 || isSpin)) score += (expertWeights.b2b || 1) * 50 * currentB2B;
                 score += (expertWeights.combo || 1) * 50 * currentCombo;
             }
             
-            if (this.currentExpert === 'FINESSE') {
-                const calculateFinesseReward = (finesseCost) => 15.0 * Math.exp(-Math.pow(finesseCost - 3.5, 2) / (2 * Math.pow(1.5, 2)));
-                score += calculateFinesseReward(finesse);
-            } else {
-                score += finesse * (expertWeights.finessePenalty || -0.2);
-            }
+            score += finesse * (expertWeights.finessePenalty || -0.2);
+            
             return score;
         }
         
@@ -623,7 +625,6 @@
                 if (columnHeights[c] > maxHeight) maxHeight = columnHeights[c];
             }
 
-            // HEURISTIC REFINEMENT: More accurate hole detection logic.
             let holes = 0; let coveredHoles = 0;
             for (let c = 0; c < COLS; c++) {
                 let colHasBlock = false;
@@ -639,10 +640,18 @@
             let bumpiness = 0;
             for (let i = 0; i < COLS - 1; i++) bumpiness += Math.abs(columnHeights[i] - columnHeights[i + 1]);
             
-            let tSpinSetups = 0;
-            for (let r = 1; r < ROWS + HIDDEN_ROWS - 1; r++) for (let c = 1; c < COLS - 1; c++) {
-                const isHole = grid[r][c] === 0, isUpSolid = grid[r-1]?.[c] !== 0, isLeftSolid = grid[r][c-1] !== 0, isRightSolid = grid[r][c+1] !== 0, isDownOpen = grid[r+1]?.[c] === 0;
-                if (isHole && isLeftSolid && isRightSolid && isUpSolid && isDownOpen) if (grid[r+1]?.[c-1] === 0 || grid[r+1]?.[c+1] === 0) tSpinSetups++;
+            let spinOpportunities = 0;
+            for (let r = 1; r < ROWS + HIDDEN_ROWS - 1; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    const isHole = grid[r][c] === 0;
+                    const isUpSolid = grid[r-1]?.[c] !== 0;
+                    if(isHole && isUpSolid) {
+                        const isLeftSolid = c > 0 ? grid[r][c-1] !== 0 : true;
+                        const isRightSolid = c < COLS - 1 ? grid[r][c+1] !== 0 : true;
+                        if(isLeftSolid && isRightSolid) spinOpportunities++;
+                        else if(isLeftSolid || isRightSolid) spinOpportunities += 0.5;
+                    }
+                }
             }
             
             let wells = 0;
@@ -693,7 +702,7 @@
                 if(leftDiff > 2 && rightDiff > 2) spirePenalty += Math.min(leftDiff, rightDiff);
             }
 
-            const features = { aggregateHeight, maxHeight, holes, coveredHoles, bumpiness, wells, rowTransitions, columnTransitions, tSpinSetups, pieceCount, overhangs, wellDepth, isWellBlocked: isWellBlocked ? 1 : 0, imminentClears, dangerZonePenalty, heightStandardDeviation, spirePenalty };
+            const features = { aggregateHeight, maxHeight, holes, coveredHoles, bumpiness, wells, rowTransitions, columnTransitions, spinOpportunities, pieceCount, overhangs, wellDepth, isWellBlocked: isWellBlocked ? 1 : 0, imminentClears, dangerZonePenalty, heightStandardDeviation, spirePenalty };
             return returnAsArray ? Object.values(features) : features;
         }
 
@@ -729,7 +738,7 @@
         calculatePossiblePlacements(grid, pieceType) {
             const placements = [];
             const spawnX = (pieceType === "O" ? 4 : 3), spawnY = (pieceType === "I" ? 17 : 18), initialShape = SHAPES[pieceType][0];
-            const queue = [{ x: spawnX, y: spawnY, rotation: 0, shape: initialShape, finesse: 0 }];
+            const queue = [{ x: spawnX, y: spawnY, rotation: 0, shape: initialShape, finesse: 0, path: [] }];
             const visitedStates = new Set();
             visitedStates.add(`${spawnX},${spawnY},0`);
             const visitedPlacements = new Set();
@@ -742,6 +751,12 @@
                 const placementKey = `${currentPiece.x},${finalY},${currentPiece.rotation}`;
                 if (!visitedPlacements.has(placementKey)) {
                     visitedPlacements.add(placementKey);
+                    
+                    let isSimpleDrop = false;
+                    let testY = currentPiece.y;
+                    while(!this.game.checkCollision(currentPiece.shape, currentPiece.x, testY + 1, grid)) testY++;
+                    if(testY === finalY && currentPiece.path.every(p => p !== 'D')) isSimpleDrop = true;
+
                     const tempGrid = grid.map((row) => [...row]);
                     currentPiece.shape.forEach((row, y) => row.forEach((val, x) => { if (val !== 0 && tempGrid[finalY + y]) tempGrid[finalY + y][currentPiece.x + x] = val; }));
                     let linesCleared = 0;
@@ -750,13 +765,13 @@
                     const nextCombo = linesCleared > 0 ? (this.game.combo || 0) + 1 : 0;
                     const isDifficult = linesCleared >= 4 || isSpin;
                     const nextB2B = isDifficult ? (this.game.b2b || 0) + 1 : 0;
-                    placements.push({ rotation: currentPiece.rotation, x: currentPiece.x, grid: tempGrid, linesCleared, isSpin, isMini, nextCombo, finesse: currentPiece.finesse, isDifficult, nextB2B, pieceType });
+                    placements.push({ rotation: currentPiece.rotation, x: currentPiece.x, grid: tempGrid, linesCleared, isSpin, isMini, nextCombo, finesse: currentPiece.finesse, isDifficult, nextB2B, pieceType, isSimpleDrop });
                 }
 
-                const moves = [ { dx: -1, dy: 0, dr: 0 }, { dx: 1, dy: 0, dr: 0 }, { dx: 0, dy: 1, dr: 0 }, { dx: 0, dy: 0, dr: 1 }, { dx: 0, dy: 0, dr: -1 } ];
+                const moves = [ { name:'L', dx: -1, dy: 0, dr: 0 }, { name:'R', dx: 1, dy: 0, dr: 0 }, { name:'D', dx: 0, dy: 1, dr: 0 }, { name:'CW', dx: 0, dy: 0, dr: 1 }, { name:'CCW', dx: 0, dy: 0, dr: -1 } ];
                 for (const move of moves) {
                     if (pieceType === 'O' && move.dr !== 0) continue;
-                    let nextPiece = { ...currentPiece };
+                    let nextPiece = { ...currentPiece, path: [...currentPiece.path, move.name] };
                     nextPiece.x += move.dx; nextPiece.y += move.dy;
                     if (move.dr !== 0) {
                         nextPiece.rotation = (nextPiece.rotation + move.dr + 4) % 4;
@@ -777,18 +792,30 @@
             if (this.game.isGameOver || !this.game.activePiece) return;
             const speed = parseFloat(document.getElementById('game-speed')?.value || 500);
             const moveDelay = speed < 900 ? 50 : 0;
-            const currentRot = this.game.activePiece.rotation;
-            const targetRot = move.rotation;
-            const diff = (targetRot - currentRot + 4) % 4;
 
+            const targetRot = move.rotation;
+            const currentRot = this.game.activePiece.rotation;
+            const diff = (targetRot - currentRot + 4) % 4;
             if (diff === 3) { this.game.rotate(-1); } 
             else if (diff > 0) { for(let i=0; i<diff; i++) this.game.rotate(1); }
-            if (moveDelay > 0) await new Promise(res => setTimeout(res, moveDelay));
-            if (!this.game.activePiece) return; 
+            if (moveDelay > 0) await new Promise(res => setTimeout(res, moveDelay/2));
 
-            while (this.game.activePiece.x > move.x) { this.game.move(-1); if (moveDelay > 0) await new Promise(res => setTimeout(res, moveDelay)); if (!this.game.activePiece) return; }
-            while (this.game.activePiece.x < move.x) { this.game.move(1); if (moveDelay > 0) await new Promise(res => setTimeout(res, moveDelay)); if (!this.game.activePiece) return; }
-            this.game.hardDrop();
+            while (this.game.activePiece && this.game.activePiece.x > move.x) { this.game.move(-1); if (moveDelay > 0) await new Promise(res => setTimeout(res, moveDelay/2)); }
+            while (this.game.activePiece && this.game.activePiece.x < move.x) { this.game.move(1); if (moveDelay > 0) await new Promise(res => setTimeout(res, moveDelay/2)); }
+
+            if (!this.game.activePiece) return;
+
+            if(move.isSimpleDrop) {
+                this.game.hardDrop();
+            } else {
+                this.game.softDropActive = true;
+                while(this.game.activePiece && !this.game.isTouchingFloor) {
+                    this.game.drop(true);
+                    if (moveDelay > 0) await new Promise(res => setTimeout(res, moveDelay/4));
+                }
+                this.game.softDropActive = false;
+                if(this.game.isTouchingFloor) this.game.lockPiece();
+            }
         }
     }
 
@@ -797,14 +824,14 @@
     let generationCounter = 0;
     let performanceHistory = { labels: [], topScores: [], avgScores: [] };
     let performanceChart;
-    let allStarChampions = {}; // ADVANCEMENT: Persist the best-ever specialists
+    let allStarChampions = {};
     
     function createInstanceElement(id) { const w = document.createElement('div'); w.className = 'instance-wrapper bg-gray-800/50 p-4 rounded-lg shadow-md'; w.id = `instance-wrapper-${id}`; return w; }
     
     function updateGeneration(isNew) {
         if(isNew) {
              generationCounter = 0;
-             allStarChampions = {}; // Reset champions for a new population
+             allStarChampions = {};
              performanceHistory = { labels: [], topScores: [], avgScores: [] };
              if(performanceChart) performanceChart.destroy();
              initializeChart();
@@ -893,24 +920,23 @@
         });
 
         console.log("Finding 'All-Star' team of expert policies...");
-        const bestOverallAgent = agents.reduce((best, current) => (current.finalFitness > best.finalFitness ? current : best));
+        const bestOverallAgent = agents.reduce((best, current) => (current.finalFitness > best.finalFitness ? current : best), agents[0]);
         const nextGenerationExpertDNA = JSON.parse(JSON.stringify(bestOverallAgent.getDNA().expertDNA));
         let newAllStarChampions = {};
         
-        // Helper function for elitism
         const findChampion = (metric, expertName) => {
             const currentChampion = agents.reduce((best, current) => (current.game[metric] > best.game[metric] ? current : best));
             const oldChampion = allStarChampions[expertName];
-
             if (oldChampion && currentChampion.game[metric] < oldChampion.score) {
                 console.log(`${expertName} champion regressed. Keeping previous version (Score: ${oldChampion.score}).`);
                 nextGenerationExpertDNA.expertDna[expertName] = oldChampion.dna;
                 newAllStarChampions[expertName] = oldChampion;
             } else {
-                console.log(`New ${expertName} champion: Agent ${currentChampion.game.id} (Score: ${currentChampion.game[metric]}).`);
+                const champScore = currentChampion.game[metric];
+                console.log(`New ${expertName} champion: Agent ${currentChampion.game.id} (Score: ${champScore}).`);
                 const champDNA = currentChampion.getDNA().expertDNA.expertDna[expertName];
                 nextGenerationExpertDNA.expertDna[expertName] = champDNA;
-                newAllStarChampions[expertName] = { dna: champDNA, score: currentChampion.game[metric] };
+                newAllStarChampions[expertName] = { dna: champDNA, score: champScore };
             }
         };
 
@@ -919,7 +945,6 @@
         findChampion('tetrisesCleared', 'I_PIECE');
         findChampion('tetrisesCleared', 'WELL_BUILDER');
         
-        // For downstacker, lower is better, so the logic is inverted.
         const downstackChampion = agents.reduce((best, current) => (current.getBoardFeatures(current.game.grid).aggregateHeight < best.getBoardFeatures(best.game.grid).aggregateHeight ? current : best));
         const oldDownstackChampion = allStarChampions['DOWNSTACK'];
         const currentDownstackScore = downstackChampion.getBoardFeatures(downstackChampion.game.grid).aggregateHeight;
@@ -934,7 +959,6 @@
             newAllStarChampions['DOWNSTACK'] = { dna: champDNA, score: currentDownstackScore };
         }
         
-        // Update the global champions record for the next generation
         allStarChampions = newAllStarChampions;
 
         console.log(`Best overall agent from gen ${generationCounter} was Agent ${bestOverallAgent.game.id} with fitness ${bestOverallAgent.finalFitness}.`);
