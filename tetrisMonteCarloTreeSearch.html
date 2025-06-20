@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tetris AI v31 - Hold Logic & Heuristic Tuning</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
+    <style>
+        body { font-family: 'Roboto Mono', monospace; background-color: #1a202c; color: #e2e8f0; }
+        .game-container canvas { background-color: #000; border: 2px solid #4a5568; border-radius: 0.5rem; }
+        .info-panel { background-color: #2d3748; border-radius: 0.5rem; padding: 1rem; font-size: 0.8rem; }
+        .info-panel canvas { background-color: #1a202c; border: 1px solid #4a5568; border-radius: 0.25rem; }
+        #dna-display, #parent-dna-input { background-color: #1a202c; border: 1px solid #4a5568; font-size: 0.75rem; white-space: pre-wrap; word-wrap: break-word; width: 100%; min-height: 120px; }
+        input[type=range] { -webkit-appearance: none; width: 100%; height: 8px; background: #4a5568; border-radius: 5px; outline: none; opacity: 0.7; transition: opacity .2s; }
+        input[type=range]:hover { opacity: 1; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 18px; height: 18px; background: #a0aec0; cursor: pointer; border-radius: 50%; }
+        input[type=range]::-moz-range-thumb { width: 18px, height: 18px; background: #a0aec0; cursor: pointer; border-radius: 50%; }
+        #game-instances-container { display: flex; flex-wrap: wrap; justify-content: center; gap: 2rem; }
+        .instance-wrapper { flex-grow: 1; min-width: 550px; max-width: 600px; }
+    </style>
+</head>
+<body class="p-4 sm:p-8">
+
+    <div class="max-w-screen-2xl mx-auto">
+        <header class="text-center mb-8">
+            <h1 class="text-3xl sm:text-4xl font-bold text-white">Tetris AI Training Environment</h1>
+            <p class="text-gray-400 mt-2">Heuristic-Guided MCTS with Hold Logic</p>
+        </header>
+
+        <div id="main-controls" class="text-center mb-8 bg-gray-800 p-4 rounded-lg shadow-lg">
+             <h2 class="text-xl font-bold mb-4">Master Controls</h2>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                 <button id="start-all-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">Start Game</button>
+                 <button id="stop-all-btn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg">Stop Game</button>
+                <div class="flex items-center justify-center">
+                    <input type="checkbox" id="human-player-checkbox" class="h-5 w-5 rounded">
+                    <label for="human-player-checkbox" class="ml-2">Human Player</label>
+                </div>
+                <div class="flex items-center justify-center">
+                    <input type="checkbox" id="ai-enabled-checkbox" class="h-5 w-5 rounded" checked>
+                    <label for="ai-enabled-checkbox" class="ml-2">Enable AI</label>
+                </div>
+            </div>
+            
+             <p id="seed-display" class="text-xs text-gray-500 mb-4"></p>
+             
+             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <h3 class="text-lg font-bold mb-2">Training Controls</h3>
+                    <p class="text-sm text-gray-400 mb-4">The agent learns after each game. Click Restart to feed the data to the network.</p>
+                    <button id="restart-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg w-full mt-4">Restart and Train</button>
+                    <div id="training-info" class="text-sm mt-2 text-teal-300"></div>
+                </div>
+                 <div>
+                     <h3 class="text-lg font-bold mb-2">AI Parameters</h3>
+                     <div class="space-y-3 text-sm text-left">
+                        <h4 class="font-bold mt-4 border-b border-gray-600">MCTS Parameters</h4>
+                        <div class="flex justify-between items-center">
+                           <label for="mcts-simulations">Simulations per Move:</label>
+                           <input type="number" id="mcts-simulations" value="100" min="10" max="5000" class="bg-gray-700 text-white rounded px-2 py-1 w-24 text-center">
+                        </div>
+                        <div>
+                             <label for="cpuct">Exploration (cPUCT): <span id="cpuct-value">1.41</span></label>
+                             <input type="range" id="cpuct" min="0.1" max="5.0" step="0.01" value="1.41">
+                        </div>
+                        <h4 class="font-bold mt-4 border-b border-gray-600">Live Parameters</h4>
+                         <div>
+                            <label for="game-speed">AI Speed: <span id="game-speed-value">Fast</span></label>
+                            <input type="range" id="game-speed" min="0" max="1000" step="10" value="950">
+                        </div>
+                     </div>
+                 </div>
+             </div>
+        </div>
+
+        <div id="game-instances-container">
+             </div>
+    </div>
+    
+    <script>
+    // --- GAME CONSTANTS AND CORE LOGIC (Mostly Unchanged) ---
+    const COLS=10;const ROWS=20;const HIDDEN_ROWS=20;const BLOCK_SIZE=30;const COLORS={T:"#a000f0",I:"#00f0f0",O:"#f0f000",L:"#f0a000",J:"#0000f0",S:"#00f000",Z:"#f00000",GHOST:"rgba(255,255,255,0.2)"};const SHAPES={I:[[[0,0,0,0],[2,2,2,2],[0,0,0,0],[0,0,0,0]],[[0,0,2,0],[0,0,2,0],[0,0,2,0],[0,0,2,0]],[[0,0,0,0],[0,0,0,0],[2,2,2,2],[0,0,0,0]],[[0,2,0,0],[0,2,0,0],[0,2,0,0],[0,2,0,0]]],J:[[[5,0,0],[5,5,5],[0,0,0]],[[0,5,5],[0,5,0],[0,5,0]],[[0,0,0],[5,5,5],[0,0,5]],[[0,5,0],[0,5,0],[5,5,0]]],L:[[[0,0,4],[4,4,4],[0,0,0]],[[0,4,0],[0,4,0],[0,4,4]],[[0,0,0],[4,4,4],[4,0,0]],[[4,4,0],[0,4,0],[0,4,0]]],O:[[[0,3,3,0],[0,3,3,0],[0,0,0,0]]],S:[[[0,6,6],[6,6,0],[0,0,0]],[[0,6,0],[0,6,6],[0,0,6]],[[0,0,0],[0,6,6],[6,6,0]],[[6,0,0],[6,6,0],[0,6,0]]],T:[[[0,1,0],[1,1,1],[0,0,0]],[[0,1,0],[0,1,1],[0,1,0]],[[0,0,0],[1,1,1],[0,1,0]],[[0,1,0],[1,1,0],[0,1,0]]],Z:[[[7,7,0],[0,7,7],[0,0,0]],[[0,0,7],[0,7,7],[0,7,0]],[[0,0,0],[7,7,0],[0,7,7]],[[0,7,0],[7,7,0],[7,0,0]]]};const KICK_DATA={JLSTZ:[[[0,0],[-1,0],[-1,1],[0,-2],[-1,-2]],[[0,0],[1,0],[1,-1],[0,2],[1,2]],[[0,0],[1,0],[1,-1],[0,2],[1,2]],[[0,0],[-1,0],[-1,1],[0,-2],[-1,-2]],[[0,0],[1,0],[1,1],[0,-2],[1,-2]],[[0,0],[-1,0],[-1,-1],[0,2],[-1,2]],[[0,0],[-1,0],[-1,-1],[0,2],[-1,2]],[[0,0],[1,0],[1,1],[0,-2],[1,-2]]],I:[[[0,0],[-2,0],[1,0],[-2,-1],[1,2]],[[0,0],[2,0],[-1,0],[2,1],[-1,-2]],[[0,0],[-1,0],[2,0],[-1,2],[2,-1]],[[0,0],[1,0],[-2,0],[1,-2],[-2,1]],[[0,0],[2,0],[-1,0],[2,1],[-1,-2]],[[0,0],[-2,0],[1,0],[-2,-1],[1,2]],[[0,0],[1,0],[-2,0],[1,-2],[-2,1]],[[0,0],[-1,0],[2,0],[-1,2],[2,-1]]]};
+    const PIECE_MAP={1:"T",2:"I",3:"O",4:"L",5:"J",6:"S",7:"Z"};const PIECE_KEYS=Object.keys(SHAPES);
+    const DAS=10,ARR=0,LOCK_DELAY_DURATION=500;
+    class SeededRandom{constructor(e){this.seed=e}next(){return this.seed=(9301*this.seed+49297)%233280,this.seed/233280}}
+    
+    class TetrisGame{
+        constructor(e,t,s){this.id=t;this.container=e;this.rng=new SeededRandom(s);this.lastTime=0;this.agent=null;this.initUI();this.reset();}
+        initUI() {
+            this.container.innerHTML = `
+                <div class="instance-wrapper bg-gray-800/50 p-4 rounded-lg shadow-md" id="instance-wrapper-${this.id}">
+                    <h2 class="text-xl font-bold mb-4 text-center w-full">Agent ${this.id}</h2>
+                    <div class="flex flex-col sm:flex-row gap-4 w-full items-start justify-center">
+                        <div class="info-panel flex-shrink-0 w-full sm:w-40 text-center">
+                            <div class="mb-4">
+                                <h3 class="text-lg font-bold">HOLD</h3>
+                                <div class="h-24 flex items-center justify-center mt-2">
+                                    <canvas id="hold-canvas-${this.id}" width="80" height="80"></canvas>
+                                </div>
+                            </div>
+                            <div>
+                                <h3 class="text-lg font-bold mb-2">STATS</h3>
+                                <p>Score: <span id="score-${this.id}">0</span></p>
+                                <p>Lines: <span id="lines-${this.id}">0</span></p>
+                                <p>Level: <span id="level-${this.id}">1</span></p>
+                                <p>Pieces: <span id="pieces-${this.id}">0</span></p>
+                                <p>B2B: <span id="b2b-${this.id}">0</span></p>
+                                <div id="agent-info-display-${this.id}" class="mt-2 text-left"></div>
+                            </div>
+                        </div>
+                        <div class="game-container relative flex-grow">
+                            <canvas id="game-canvas-${this.id}" width="${10 * BLOCK_SIZE}" height="${20 * BLOCK_SIZE}"></canvas>
+                            <div id="game-over-${this.id}" class="absolute inset-0 bg-black/75 flex items-center justify-center text-2xl font-bold text-red-500" style="display: none;">GAME OVER</div>
+                        </div>
+                        <div class="info-panel flex-shrink-0 w-full sm:w-40 text-center">
+                            <h3 class="text-lg font-bold">NEXT</h3>
+                            <div id="next-queue-${this.id}" class="flex flex-col items-center gap-2 mt-2"></div>
+                        </div>
+                    </div>
+                </div>`;
+            this.canvas=document.getElementById(`game-canvas-${this.id}`);this.ctx=this.canvas.getContext("2d");this.ctx.scale(BLOCK_SIZE,BLOCK_SIZE);this.holdCtx=document.getElementById(`hold-canvas-${this.id}`).getContext("2d");this.nextQueueContainer=document.getElementById(`next-queue-${this.id}`);this.nextCanvases=[];for(let e=0;e<5;e++){const t=document.createElement("canvas");t.width=80,t.height=80,this.nextQueueContainer.appendChild(t),this.nextCanvases.push(t.getContext("2d"))}this.scoreEl=document.getElementById(`score-${this.id}`);this.linesEl=document.getElementById(`lines-${this.id}`);this.levelEl=document.getElementById(`level-${this.id}`);this.b2bEl=document.getElementById(`b2b-${this.id}`);this.agentInfoEl=document.getElementById(`agent-info-display-${this.id}`);this.gameOverEl=document.getElementById(`game-over-${this.id}`);this.piecesEl=document.getElementById(`pieces-${this.id}`);
+        }
+        reset(){this.isRunning=!1,this.isGameOver=!1,this.score=0,this.linesCleared=0,this.level=1,this.combo=0,this.b2b=0,this.startTime=Date.now(),this.dropCounter=0,this.grid=this.createGrid(COLS,ROWS+HIDDEN_ROWS),this.pieceQueue=[],this.fillQueue(),this.spawnNewPiece(),this.holdPiece=null,this.canHold=!0,this.piecesPlaced=0,this.updateStats(),this.gameOverEl.style.display="none"; const wrapper = document.getElementById(`instance-wrapper-${this.id}`); if (wrapper) { wrapper.classList.remove('opacity-50'); } }
+        createGrid(e,t){return Array.from({length:t},()=>Array(e).fill(0))}fillQueue(){const e=[...PIECE_KEYS];while(e.length){const t=e.splice(Math.floor(this.rng.next()*e.length),1)[0];this.pieceQueue.push(t)}}
+        spawnNewPiece(e=null){if(this.isGameOver)return;e||(this.pieceQueue.length<7&&this.fillQueue(),e=this.pieceQueue.shift()),this.activePiece={type:e,rotation:0,x:3,y:18,finesse:0},"O"===e&&(this.activePiece.x=4),"I"===e&&(this.activePiece.y=17),this.activePiece.shape=SHAPES[this.activePiece.type][this.activePiece.rotation],this.checkCollision(this.activePiece.shape,this.activePiece.x,this.activePiece.y)&&this.gameOver()}
+        checkCollision(e,t,s,i=this.grid){if(!e||!e.length)return!0;for(let r=0;r<e.length;r++)for(let o=0;o<e[r].length;o++)if(0!==e[r][o]){const n=t+o,l=s+r;if(n<0||n>=COLS||l<0||l>=ROWS+HIDDEN_ROWS||i[l]&&0!==i[l][n])return!0}return!1}
+        lockPiece() {
+            const piece = this.activePiece; if (!piece || piece.y < 0) return; this.piecesPlaced++;
+            piece.shape.forEach((row, rowIndex) => { row.forEach((value, colIndex) => { if (value !== 0) { const boardY = piece.y + rowIndex; const boardX = piece.x + colIndex; if (boardY >= 0 && boardY < this.grid.length && this.grid[boardY]) { this.grid[boardY][boardX] = value; } } }); });
+            let clearedRows = this.clearLines();
+            if (clearedRows.length > 0) {
+                let score = { 1: 100, 2: 300, 3: 500, 4: 800 }[clearedRows.length] || 0;
+                if(this.b2b > 0 && clearedRows.length >= 4) score = Math.floor(1.5 * score);
+                this.score += score * this.level; this.combo++;
+                clearedRows.length >= 4 ? this.b2b++ : this.b2b = 0;
+                this.linesCleared += clearedRows.length; this.level = Math.floor(this.linesCleared / 10) + 1;
+            } else { this.combo = 0; }
+            this.spawnNewPiece(); this.canHold = !0; this.updateStats();
+        }
+        clearLines(){let t=[];for(let s=this.grid.length-1;s>=0;s--)this.grid[s].every(e=>0!==e)&&t.push(s);if(t.length>0){for(const i of t)this.grid.splice(i,1);for(let i=0;i<t.length;i++)this.grid.unshift(new Array(COLS).fill(0));}return t}
+        move(e){if(!this.activePiece||this.checkCollision(this.activePiece.shape,this.activePiece.x+e,this.activePiece.y))return!1;this.activePiece.x+=e;return !0}
+        rotate(e=1){const t=this.activePiece;if(!t||"O"===t.type)return!1;const s=t.rotation,i=(s+e+4)%4,r="I"===t.type?KICK_DATA.I:KICK_DATA.JLSTZ,o=1===e?2*s:2*i+1;for(const[n,l]of r[o])if(!this.checkCollision(SHAPES[t.type][i],t.x+n,t.y-l))return t.x+=n,t.y-=l,t.rotation=i,t.shape=SHAPES[t.type][i],!0;return!1}
+        drop(){if (!this.activePiece || this.checkCollision(this.activePiece.shape, this.activePiece.x, this.activePiece.y + 1))return;this.activePiece.y++}
+        hardDrop(){if(!this.activePiece)return;while(!this.checkCollision(this.activePiece.shape,this.activePiece.x,this.activePiece.y+1)){this.activePiece.y++};this.lockPiece()}
+        hold(){if(!this.canHold||!this.activePiece)return;const heldType=this.holdPiece?this.holdPiece.type:null;this.holdPiece={type:this.activePiece.type};this.spawnNewPiece(heldType),this.canHold=!1,this.draw()}
+        update(e){if(!this.isRunning||this.isGameOver)return;this.dropCounter+=e;if(this.dropCounter>1000/this.level){this.drop();this.dropCounter=0}this.draw();if(this.agent)this.agent.updateAgentDisplay();}
+        handleKeyDown(e){if(this.isGameOver)return;const t=["ArrowLeft","ArrowRight","ArrowDown","ArrowUp","x","X","z","Z"," ","Shift","c","C"];t.includes(e.key)&&e.preventDefault();switch(e.key){case"ArrowLeft":this.move(-1);break;case"ArrowRight":this.move(1);break;case"ArrowDown":this.drop();break;case"ArrowUp":case"x":case"X":this.rotate(1);break;case"z":case"Z":this.rotate(-1);break;case" ":this.hardDrop();break;case"Shift":case"c":case"C":this.hold()}}
+        draw(){this.ctx.fillStyle="#000",this.ctx.fillRect(0,0,this.canvas.width,this.canvas.height);this.drawMatrix(this.grid,0,-HIDDEN_ROWS,this.ctx);this.drawGhostPiece();this.activePiece&&this.drawMatrix(this.activePiece.shape,this.activePiece.x,this.activePiece.y-HIDDEN_ROWS,this.ctx,this.activePiece.type);this.drawHoldPiece();this.drawNextQueue()}
+        drawMatrix(e,t,s,i,r){e.forEach((e,o)=>e.forEach((n,l)=>{if(n!==0){i.fillStyle=r?COLORS[r]:COLORS[PIECE_MAP[n]];i.fillRect(l+t,o+s,1,1)}}))}
+        drawGhostPiece(){if(!this.activePiece)return;const e={...this.activePiece};for(;!this.checkCollision(e.shape,e.x,e.y+1);)e.y++;this.ctx.globalAlpha=.3;this.drawMatrix(e.shape,e.x,e.y-HIDDEN_ROWS,this.ctx,this.activePiece.type),this.ctx.globalAlpha=1}
+        drawPieceInPreview(e,t){e.clearRect(0,0,80,80);if(t){const s=SHAPES[t.type][0],i="I"===t.type||"O"===t.type?18:20,r=s[0].length*i,o=s.length*i,n=(80-r)/2,l=(80-o)/2;e.fillStyle=COLORS[t.type],s.forEach((t,s)=>t.forEach((r,o)=>{r&&e.fillRect(n+o*i,l+s*i,i-1,i-1)}))}}
+        drawHoldPiece(){this.drawPieceInPreview(this.holdCtx,this.holdPiece)}drawNextQueue(){this.nextCanvases.forEach((e,t)=>{const s=this.pieceQueue[t];s?this.drawPieceInPreview(e,{type:s}):e.clearRect(0,0,80,80)})}
+        updateStats(){this.scoreEl.textContent=this.score;this.linesEl.textContent=this.linesCleared;this.levelEl.textContent=this.level;this.b2bEl.textContent=this.b2b;if(this.piecesEl)this.piecesEl.textContent=this.piecesPlaced;}
+        gameOver(){this.isRunning=!1,this.isGameOver=!0,this.activePiece=null,this.gameOverEl.style.display="flex";console.log(`Game Over! Final Score: ${this.score}`);if(this.agent)this.agent.onGameOver(this.score);}
+        start(){if(this.isGameOver)this.reset();if(!this.isRunning){this.isRunning=!0,this.lastTime=0,requestAnimationFrame(this.gameLoop.bind(this))}}stop(){this.isRunning=!1}
+        gameLoop(e){if(this.isRunning){const t=e-(this.lastTime||e);this.lastTime=e,this.update(t),requestAnimationFrame(this.gameLoop.bind(this))}}
+    }
+    
+    // --- TENSORFLOW.JS MCTS & AGENT CLASSES ---
+
+    class MCTSNode {
+        constructor(parent = null, prior = 0, action = null) {
+            this.parent = parent; this.children = [];
+            this.visitCount = 0; this.valueSum = 0;
+            this.prior = prior; this.action = action;
+        }
+        get value() { return this.visitCount === 0 ? 0 : this.valueSum / this.visitCount; }
+        isExpanded() { return this.children.length > 0; }
+        selectChild(cpuct) {
+            let bestScore = -Infinity; let bestChild = null;
+            this.children.forEach(child => {
+                const ucbScore = child.value + cpuct * child.prior * Math.sqrt(this.parent.visitCount) / (1 + child.visitCount);
+                if (ucbScore > bestScore) { bestScore = ucbScore; bestChild = child; }
+            });
+            return bestChild;
+        }
+    }
+
+    class Agent {
+        constructor(game) {
+            this.game = game;
+            this.thinkTimeout = null;
+            this.isThinking = false;
+            this.gameDataBuffer = []; 
+            this.model = this.createPolicyValueNetwork();
+            this.optimizer = tf.train.adam(0.001);
+            this.generation = 0;
+            // --- HEURISTIC GUIDANCE: Start heuristic weight at 0.8 (80%) ---
+            this.heuristicWeight = 0.8;
+            this.baseHeuristicWeights = {
+                aggregateHeight: -0.51, maxHeight: -0.2, holes: -10.0,
+                bumpiness: -0.35, linesCleared: 0.76, deepestWell: 2.5
+            };
+        }
+
+        createPolicyValueNetwork() {
+            const inputShape = [ROWS + HIDDEN_ROWS, COLS, 1];
+            const input = tf.input({shape: inputShape});
+            const conv1 = tf.layers.conv2d({filters: 32, kernelSize: 3, activation: 'relu', padding: 'same'}).apply(input);
+            const conv2 = tf.layers.conv2d({filters: 64, kernelSize: 3, activation: 'relu', padding: 'same'}).apply(conv1);
+            const conv3 = tf.layers.conv2d({filters: 128, kernelSize: 3, activation: 'relu', padding: 'same'}).apply(conv2);
+            const flatten = tf.layers.flatten().apply(conv3);
+            const valueDense = tf.layers.dense({units: 64, activation: 'relu'}).apply(flatten);
+            const valueOutput = tf.layers.dense({units: 1, activation: 'tanh', name: 'value'}).apply(valueDense);
+            const policyDense = tf.layers.dense({units: 64, activation: 'relu'}).apply(flatten);
+            const policyOutput = tf.layers.dense({units: 40, activation: 'softmax', name: 'policy'}).apply(policyDense);
+            return tf.model({inputs: input, outputs: [policyOutput, valueOutput]});
+        }
+
+        // --- HOLD LOGIC: The `think` method is now much smarter ---
+        async think() {
+            if (this.isThinking || !this.game.isRunning || this.game.isGameOver || !this.game.activePiece) {
+                if (this.game.isGameOver) this.stop();
+                return;
+            }
+            this.isThinking = true;
+
+            const simulations = parseInt(document.getElementById('mcts-simulations').value, 10);
+            
+            // --- Scenario A: Play the current piece ---
+            const currentPiece = this.game.activePiece.type;
+            const mctsResultCurrent = await this.runMCTS(this.game, currentPiece, simulations);
+
+            let bestChoice = { action: mctsResultCurrent.bestAction, value: mctsResultCurrent.bestValue, useHold: false };
+
+            // --- Scenario B: Play the held piece ---
+            if (this.game.canHold) {
+                const pieceToPlay = this.game.holdPiece ? this.game.holdPiece.type : this.game.pieceQueue[0];
+                if (pieceToPlay) {
+                    const mctsResultHold = await this.runMCTS(this.game, pieceToPlay, simulations);
+                    if (mctsResultHold.bestValue > bestChoice.value) {
+                        bestChoice = { action: mctsResultHold.bestAction, value: mctsResultHold.bestValue, useHold: true };
+                    }
+                }
+            }
+            
+            // Store data for the chosen path
+            this.gameDataBuffer.push({state: this.game.grid, policy: mctsResultCurrent.searchPolicy, value: null});
+
+            if (this.game.isGameOver) { this.isThinking = false; this.stop(); return; }
+            
+            if (bestChoice.useHold) {
+                this.game.hold();
+            }
+            
+            if (bestChoice.action) {
+                this.executeMove(bestChoice.action);
+            } else if (this.game.activePiece) {
+                this.game.hardDrop(); // Failsafe
+            }
+
+            this.isThinking = false;
+            if(!this.game.isGameOver && this.game.isRunning) {
+                const speed = parseFloat(document.getElementById('game-speed')?.value || 500);
+                const thinkDelay = 1000 - speed;
+                if (thinkDelay > 0) this.thinkTimeout = setTimeout(() => this.think(), thinkDelay);
+                else requestAnimationFrame(() => this.think());
+            }
+        }
+
+        async runMCTS(gameState, pieceType, simulations) {
+            const cpuct = parseFloat(document.getElementById('cpuct').value);
+            const root = new MCTSNode();
+            
+            await this.expandNode(root, gameState.grid, pieceType);
+            if(root.children.length === 0) return {bestAction: null, bestValue: -1, searchPolicy: new Array(40).fill(1/40)};
+
+            for (let i = 0; i < simulations; i++) {
+                let node = root;
+                const tempGame = this.cloneGameState(gameState);
+                tempGame.activePiece.type = pieceType; // Ensure clone knows which piece it's simulating
+                
+                while (node.isExpanded() && node.children.length > 0) {
+                    node = node.selectChild(cpuct);
+                    if(node.action) this.applyActionToClone(tempGame, node.action);
+                }
+                
+                const [policy, value] = await this.predict(tempGame.grid);
+                let endValue = tempGame.isGameOver ? -1 : value[0]; 
+                
+                if (!node.isExpanded()) {
+                   const nextPieceInSim = tempGame.pieceQueue[0] || PIECE_KEYS[Math.floor(Math.random()*PIECE_KEYS.length)];
+                   await this.expandNode(node, tempGame.grid, nextPieceInSim, policy);
+                }
+                
+                while(node) {
+                    node.visitCount++;
+                    node.valueSum += endValue;
+                    node = node.parent;
+                }
+            }
+
+            let bestChild = null, bestValue = -Infinity;
+            const searchPolicy = new Array(40).fill(0);
+            root.children.forEach(child => {
+                if (child.value > bestValue) {
+                    bestValue = child.value;
+                    bestChild = child;
+                }
+                const moveIndex = child.action.rotation * COLS + child.action.x;
+                if (moveIndex >= 0 && moveIndex < 40) {
+                    searchPolicy[moveIndex] = child.visitCount / root.visitCount;
+                }
+            });
+
+            return {bestAction: bestChild ? bestChild.action : null, bestValue, searchPolicy};
+        }
+
+        async expandNode(node, grid, pieceType, precomputedPolicy = null) {
+            const nn_policy = precomputedPolicy || (await this.predict(grid))[0];
+            const possibleMoves = this.calculatePossiblePlacements(grid, pieceType);
+            if (possibleMoves.length === 0) return;
+
+            let moveScores = [];
+            possibleMoves.forEach((move, i) => {
+                const moveIndex = move.rotation * COLS + move.x;
+                let score = 0;
+                if (this.heuristicWeight > 0) {
+                    const tempGrid = this.getGridAfterMove(grid, pieceType, move);
+                    score = this.evaluateBoard(tempGrid);
+                }
+                moveScores.push({move, score, index: moveIndex});
+            });
+
+            let finalPriors = new Array(possibleMoves.length).fill(0);
+            if(this.heuristicWeight > 0 && moveScores.some(ms => ms.score !== 0)) {
+                const maxScore = Math.max(...moveScores.map(ms => ms.score));
+                const exps = moveScores.map(ms => Math.exp(ms.score - maxScore));
+                const sumExps = exps.reduce((a, b) => a + b, 1e-6); // Avoid division by zero
+                const heuristicPolicy = exps.map(e => e / sumExps);
+
+                moveScores.forEach((ms, i) => {
+                    const nn_prior = (ms.index >= 0 && ms.index < 40) ? nn_policy[ms.index] : 0;
+                    finalPriors[i] = (1 - this.heuristicWeight) * nn_prior + this.heuristicWeight * heuristicPolicy[i];
+                });
+            } else {
+                 moveScores.forEach((ms, i) => {
+                    finalPriors[i] = (ms.index >= 0 && ms.index < 40) ? nn_policy[ms.index] : 0;
+                });
+            }
+
+            moveScores.forEach((ms, i) => {
+                node.children.push(new MCTSNode(node, finalPriors[i], ms.move));
+            });
+        }
+        
+        async predict(grid) {
+             const inputTensor = tf.tensor4d([grid.map(row => row.map(cell => [cell > 0 ? 1 : 0]))]);
+             const [policyTensor, valueTensor] = this.model.predict(inputTensor);
+             const policy = await policyTensor.data();
+             const value = await valueTensor.data();
+             inputTensor.dispose(); policyTensor.dispose(); valueTensor.dispose();
+             return [policy, value];
+        }
+        
+        async onGameOver(finalScore) {
+            this.stop();
+            const normalizedScore = Math.tanh(finalScore / 40000); 
+            this.gameDataBuffer.forEach(data => data.value = normalizedScore);
+            console.log(`Game finished. Collected ${this.gameDataBuffer.length} data points.`);
+            await this.trainOnGameData();
+        }
+
+        async trainOnGameData() {
+            if (this.gameDataBuffer.length === 0) return;
+            const trainingInfoEl = document.getElementById('training-info');
+            trainingInfoEl.textContent = `Training on ${this.gameDataBuffer.length} samples...`;
+            
+            tf.tidy(() => {
+                 const states = this.gameDataBuffer.map(d => d.state.map(row => row.map(cell => [cell > 0 ? 1 : 0])));
+                 const policies = this.gameDataBuffer.map(d => d.policy);
+                 const values = this.gameDataBuffer.map(d => d.value);
+
+                 const stateTensors = tf.tensor4d(states);
+                 const policyTensors = tf.tensor2d(policies);
+                 const valueTensors = tf.tensor2d(values, [values.length, 1]);
+
+                 this.optimizer.minimize(() => {
+                    const [predPolicy, predValue] = this.model.apply(stateTensors);
+                    const policyLoss = tf.losses.softmaxCrossEntropy(policyTensors, predPolicy).mean();
+                    const valueLoss = tf.losses.meanSquaredError(valueTensors, predValue).mean();
+                    const totalLoss = policyLoss.add(valueLoss);
+                    tf.print(`Total Loss: ${totalLoss.dataSync()[0]}, Policy Loss: ${policyLoss.dataSync()[0]}, Value Loss: ${valueLoss.dataSync()[0]}`);
+                    return totalLoss;
+                 });
+            });
+            
+            this.generation++;
+            this.heuristicWeight = Math.max(0, 0.8 - (this.generation * 0.1));
+
+            trainingInfoEl.textContent = `Training complete. Gen ${this.generation}, Heuristic Weight: ${this.heuristicWeight.toFixed(2)}.`;
+            this.gameDataBuffer = []; 
+        }
+
+        calculatePossiblePlacements(grid, pieceType) {
+             const placements = []; const uniquePlacements = new Set();
+             for(let rot = 0; rot < SHAPES[pieceType].length; rot++) {
+                const shape = SHAPES[pieceType][rot];
+                for(let x = -2; x < COLS; x++) {
+                    const tempPiece = { x, y: 18, shape };
+                    if (this.game.checkCollision(tempPiece.shape, tempPiece.x, tempPiece.y, grid)) continue;
+                    let finalY = tempPiece.y;
+                    while (!this.game.checkCollision(tempPiece.shape, tempPiece.x, finalY + 1, grid)) finalY++;
+                    const placementKey = `${tempPiece.x},${finalY},${rot}`;
+                    if (!uniquePlacements.has(placementKey)) {
+                        placements.push({ rotation: rot, x: tempPiece.x, y: finalY });
+                        uniquePlacements.add(placementKey);
+                    }
+                }
+             }
+             return placements;
+        }
+
+        getGridAfterMove(grid, pieceType, move) {
+            const tempGrid = grid.map(row => [...row]);
+            const shape = SHAPES[pieceType][move.rotation];
+            shape.forEach((row, r) => row.forEach((val, c) => {
+                if (val !== 0) {
+                    const boardY = move.y + r;
+                    const boardX = move.x + c;
+                    if(tempGrid[boardY]) tempGrid[boardY][boardX] = val;
+                }
+            }));
+            return tempGrid;
+        }
+        
+        evaluateBoard(grid) {
+            const features = this.getBoardFeatures(grid);
+            let score = 0;
+            for (const key in this.baseHeuristicWeights) {
+                score += (features[key] || 0) * this.baseHeuristicWeights[key];
+            }
+            return score;
+        }
+
+        getBoardFeatures(grid) {
+            const columnHeights = new Array(COLS).fill(0);
+            let aggregateHeight = 0; let maxHeight = 0;
+            for (let c = 0; c < COLS; c++) {
+                for (let r = 0; r < grid.length; r++) {
+                    if (grid[r][c] !== 0) {
+                        columnHeights[c] = (ROWS + HIDDEN_ROWS) - r;
+                        break; 
+                    }
+                }
+                aggregateHeight += columnHeights[c];
+                maxHeight = Math.max(maxHeight, columnHeights[c]);
+            }
+            let holes = 0;
+            for (let c = 0; c < COLS; c++) {
+                let colHasBlock = false;
+                for (let r = 0; r < grid.length; r++) {
+                    if (grid[r][c] !== 0) { colHasBlock = true; } 
+                    else if (colHasBlock) { holes++; }
+                }
+            }
+            let bumpiness = 0;
+            for (let i = 0; i < COLS - 1; i++) bumpiness += Math.abs(columnHeights[i] - columnHeights[i + 1]);
+            let deepestWell = 0;
+            for (let i = 0; i < COLS; i++) {
+                 const leftHeight = (i > 0) ? columnHeights[i-1] : (ROWS + HIDDEN_ROWS);
+                 const rightHeight = (i < COLS - 1) ? columnHeights[i+1] : (ROWS + HIDDEN_ROWS);
+                 deepestWell = Math.max(deepestWell, Math.min(leftHeight, rightHeight) - columnHeights[i]);
+            }
+            let linesCleared = 0;
+            for(let r=0; r<grid.length; r++) {
+                if(grid[r].every(cell => cell !== 0)) linesCleared++;
+            }
+            return { aggregateHeight, maxHeight, holes, bumpiness, linesCleared, deepestWell };
+        }
+        
+        cloneGameState(game) { return {grid: game.grid.map(row => [...row]),activePiece: { ...game.activePiece },isGameOver: game.isGameOver, pieceQueue: [...game.pieceQueue]}; }
+        
+        applyActionToClone(clone, action) {
+             clone.activePiece.rotation = action.rotation;
+             clone.activePiece.shape = SHAPES[clone.activePiece.type][action.rotation];
+             clone.activePiece.x = action.x;
+             clone.activePiece.y = action.y;
+             
+             clone.activePiece.shape.forEach((row, r) => row.forEach((val, c) => {
+                if (val !== 0) { const boardY = clone.activePiece.y + r; const boardX = clone.activePiece.x + c; if (clone.grid[boardY]) clone.grid[boardY][boardX] = val; }
+             }));
+             for(let r=clone.grid.length-1; r>=0; r--) if(clone.grid[r].every(cell => cell !== 0)) { clone.grid.splice(r, 1); clone.grid.unshift(new Array(COLS).fill(0)); }
+        }
+        
+        executeMove(action) {
+            if (this.game.isGameOver || !this.game.activePiece) return;
+            this.game.activePiece.rotation = action.rotation;
+            this.game.activePiece.shape = SHAPES[this.game.activePiece.type][action.rotation];
+            this.game.activePiece.x = action.x;
+            this.game.hardDrop();
+        }
+
+        start() { this.stop(); if (this.game.isRunning) this.think(); }
+        stop() { if(this.thinkTimeout) clearTimeout(this.thinkTimeout); this.isThinking = false; }
+        updateAgentDisplay() {
+            const displayEl = this.game.agentInfoEl;
+            if(displayEl) { displayEl.innerHTML = `<p class="text-sm">Gen: ${this.generation}</p><p class="text-sm">Heuristic: ${(this.heuristicWeight*100).toFixed(0)}%</p><p>Sims: ${document.getElementById('mcts-simulations').value}</p>`; }
+        }
+    }
+
+    // --- MAIN SCRIPT ---
+    let tetrisGame;
+    let agent;
+
+    function initializeSinglePlayer() {
+        const instancesContainer = document.getElementById('game-instances-container');
+        stopAll();
+        instancesContainer.innerHTML = '';
+        
+        const seed = Date.now();
+        document.getElementById('seed-display').textContent = `Current Seed: ${seed}`;
+        
+        const instanceEl = document.createElement('div');
+        instancesContainer.appendChild(instanceEl);
+
+        tetrisGame = new TetrisGame(instanceEl, 1, seed);
+        if (!agent) {
+           agent = new Agent(tetrisGame);
+        } else {
+           agent.game = tetrisGame;
+        }
+        tetrisGame.agent = agent;
+
+        const isHumanPlayer = document.getElementById('human-player-checkbox').checked;
+        if (isHumanPlayer) {
+            document.addEventListener('keydown', (e) => tetrisGame.handleKeyDown(e));
+        }
+    }
+    
+    function startAll() { 
+        if (!tetrisGame || tetrisGame.isGameOver) initializeSinglePlayer();
+        tetrisGame.start(); 
+        const isAiEnabled = document.getElementById('ai-enabled-checkbox').checked;
+        if (isAiEnabled && agent) { agent.start(); } 
+    }
+    function stopAll() { 
+        if (tetrisGame) tetrisGame.stop(); 
+        if (agent) agent.stop(); 
+    }
+
+    async function restartAndTrain() {
+        if(agent && agent.gameDataBuffer.length > 0) {
+            await agent.onGameOver(tetrisGame.score);
+        }
+        initializeSinglePlayer();
+        startAll();
+    }
+    
+    // --- EVENT LISTENERS ---
+    function setupSlider(sliderId, valueId, isFloat = false) {
+        const slider = document.getElementById(sliderId);
+        const valueEl = document.getElementById(valueId);
+        slider.oninput = () => { valueEl.textContent = isFloat ? parseFloat(slider.value).toFixed(2) : slider.value; };
+    }
+    setupSlider('cpuct', 'cpuct-value', true);
+
+    document.getElementById('game-speed').oninput = function() {
+        const speed = parseInt(this.value, 10);
+        const speedValue = document.querySelector('#game-speed-value') || {};
+        if (speed < 300) speedValue.textContent = 'Slow';
+        else if (speed < 700) speedValue.textContent = 'Normal';
+        else if (speed < 990) speedValue.textContent = 'Fast';
+        else speedValue.textContent = 'Instant';
+    };
+
+    document.getElementById('start-all-btn').addEventListener('click', startAll);
+    document.getElementById('stop-all-btn').addEventListener('click', stopAll);
+    document.getElementById('restart-btn').addEventListener('click', restartAndTrain);
+    
+    window.onload = () => {
+        tf.setBackend('webgl').then(() => {
+            console.log("TensorFlow.js backend set to WebGL.");
+            initializeSinglePlayer();
+        });
+    };
+    </script>
+</body>
+</html>
