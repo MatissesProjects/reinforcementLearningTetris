@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tetris AI v19 - Stable Build</title>
+    <title>Tetris AI v20 - Stable Architecture</title>
     <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -26,7 +26,7 @@
     <div class="max-w-screen-2xl mx-auto">
         <header class="text-center mb-8">
             <h1 class="text-3xl sm:text-4xl font-bold text-white">Tetris AI Training Environment</h1>
-            <p class="text-gray-400 mt-2">CNN Gating Network + Genetic Crossover</p>
+            <p class="text-gray-400 mt-2">Hybrid Evolution: CNN Gating + Specialist Crossover</p>
         </header>
 
         <div id="main-controls" class="text-center mb-8 bg-gray-800 p-4 rounded-lg shadow-lg">
@@ -254,8 +254,6 @@
     }
     
     // --- NEURAL NETWORK & AGENT CLASSES ---
-
-    // ADVANCEMENT: A new, unified Network class architecture
     class Network {
         constructor(layers) { this.layers = layers; }
         static feedForward(inputs, network) {
@@ -298,7 +296,7 @@
                 for (let r = 0; r < this.outputShape.rows; r++) {
                     for (let c = 0; c < this.outputShape.cols; c++) {
                         let sum = 0;
-                        for (let kr = 0; kr < this.kernelSize; kr++) for (let kc = 0; kc < this.kernelSize; kc++) sum += (grid[r+kr][c+kc] > 0 ? 1 : 0) * filter[kr][kc];
+                        for (let kr = 0; kr < this.kernelSize; kr++) for (let kc = 0; kc < this.kernelSize; kc++) sum += (grid[r+kr]?.[c+kc] > 0 ? 1 : 0) * filter[kr][kc];
                         output.push(relu(sum + bias));
                     }
                 }
@@ -329,8 +327,8 @@
     class DenseLayer {
         constructor(inputCount, outputCount, activation = Math.tanh) {
             this.type = 'dense'; this.inputCount = inputCount; this.outputCount = outputCount; this.activation = activation;
-            this.weights = Array.from({length: inputCount}, () => new Array(outputCount).fill(0).map(() => Math.random() * 2 - 1));
-            this.biases = new Array(outputCount).fill(0).map(() => Math.random() * 2 - 1);
+            this.weights = Array.from({length: inputCount}, () => new Array(outputCount).fill(0).map(() => (Math.random() * 2 - 1) * Math.sqrt(1/inputCount) ));
+            this.biases = new Array(outputCount).fill(0);
         }
         feedForward(inputs) {
             const outputs = new Array(this.outputCount);
@@ -403,9 +401,7 @@
             }
         }
         
-        getInitialGatingDNA() {
-            return { exploration_biases: [0,0,0,0,0,0] };
-        }
+        getInitialGatingDNA() { return { exploration_biases: [0,0,0,0,0,0] }; }
 
         getInitialExpertDNA() {
              const baseWeights = {
@@ -800,14 +796,12 @@
     let generationCounter = 0;
     let performanceHistory = { labels: [], topScores: [], avgScores: [] };
     let performanceChart;
-    let allStarChampions = {};
     
     function createInstanceElement(id) { const w = document.createElement('div'); w.className = 'instance-wrapper bg-gray-800/50 p-4 rounded-lg shadow-md'; w.id = `instance-wrapper-${id}`; return w; }
     
     function updateGeneration(isNew) {
         if(isNew) {
              generationCounter = 0;
-             allStarChampions = {};
              performanceHistory = { labels: [], topScores: [], avgScores: [] };
              if(performanceChart) performanceChart.destroy();
              initializeChart();
@@ -826,107 +820,11 @@
         document.getElementById('generation-display').textContent = generationCounter;
     }
     
-    function generateInstances(expertParentDNA = null, globalGatingDNA = null, isNewPopulation = true) {
+    // BUG FIX: Renamed back to a single generateInstances function
+    function generateInstances(parentADNA = null, parentBDNA = null, globalGatingDNA = null, isNewPopulation = true) {
         if(!isNewPopulation) updateGeneration(false);
         else updateGeneration(true);
         
-        const instancesContainer = document.getElementById('game-instances-container'); const numInstancesInput = document.getElementById('num-instances'); const seedDisplay = document.getElementById('seed-display');
-        stopAll(); instancesContainer.innerHTML = ''; gameInstances = []; agents = [];
-        if (humanPlayerKeyListeners) { document.removeEventListener('keydown', humanPlayerKeyListeners.down); document.removeEventListener('keyup', humanPlayerKeyListeners.up); }
-        const seed = Date.now(); seedDisplay.textContent = `Current Seed: ${seed}`;
-        const count = parseInt(numInstancesInput.value, 10);
-        const includeHuman = document.getElementById('human-player-checkbox').checked;
-
-        for (let i = 1; i <= count; i++) {
-            const instanceEl = createInstanceElement(i);
-            instancesContainer.appendChild(instanceEl);
-            const game = new TetrisGame(instanceEl, i, seed);
-            gameInstances.push(game);
-            if (!includeHuman || i > 1) {
-                let agent = new Agent(game, expertParentDNA, globalGatingDNA, true); // Always allow mutation for children
-                agents.push(agent);
-                game.agent = agent; 
-            }
-        }
-        if (includeHuman && gameInstances.length > 0) {
-            const humanPlayer = gameInstances[0];
-            humanPlayerKeyListeners = { down: (e) => humanPlayer.handleKeyDown(e), up: (e) => humanPlayer.handleKeyUp(e) };
-            document.addEventListener('keydown', humanPlayerKeyListeners.down);
-            document.addEventListener('keyup', humanPlayerKeyListeners.up);
-            document.querySelector('#instance-wrapper-1 h2').textContent += " (Player)";
-        }
-    }
-
-    // These two functions were accidentally deleted. Restoring them.
-    function startAll() { gameInstances.forEach(game => game.start()); if (document.getElementById('ai-enabled-checkbox').checked) { agents.forEach(agent => agent.start()); } }
-    function stopAll() { gameInstances.forEach(game => game.stop()); agents.forEach(agent => agent.stop()); }
-    
-    function evolveAndFederate() {
-        if (agents.length === 0) return;
-
-        let totalFitness = 0;
-        agents.forEach(agent => {
-            agent.finalFitness = agent.calculateFitness(agent.game);
-            totalFitness += agent.finalFitness;
-        });
-
-        if (totalFitness === 0) {
-            console.log("Total fitness is 0. Resetting with a new random population.");
-            generateInstances(null, null, true);
-            setTimeout(startAll, 500);
-            return;
-        }
-
-        const firstAgent = agents[0];
-        const newGlobalGatingDNA = firstAgent.getInitialGatingDNA();
-        newGlobalGatingDNA.gatingNetworkDNA = Network.getDNA(firstAgent.gatingNetwork);
-        newGlobalGatingDNA.gatingNetworkDNA.layers.forEach(layer => {
-            if(layer.weights) layer.weights.fill(0);
-            if(layer.biases) layer.biases.fill(0);
-        });
-        
-        agents.forEach(agent => {
-            const weight = agent.finalFitness / totalFitness;
-            const fullDNA = agent.getDNA();
-            const localGatingDNA = fullDNA.gatingDNA.gatingNetworkDNA;
-            for(let i = 0; i < newGlobalGatingDNA.exploration_biases.length; i++) newGlobalGatingDNA.exploration_biases[i] += (fullDNA.gatingDNA.exploration_biases[i] || 0) * weight;
-            for(let l=0; l < localGatingDNA.layers.length; l++){
-                const localLayer = localGatingDNA.layers[l];
-                const globalLayer = newGlobalGatingDNA.gatingNetworkDNA.layers[l];
-                if(localLayer.weights) for (let i = 0; i < localLayer.weights.length; i++) globalLayer.weights[i] += (localLayer.weights[i] || 0) * weight;
-                if(localLayer.biases) for (let i = 0; i < localLayer.biases.length; i++) globalLayer.biases[i] += (localLayer.biases[i] || 0) * weight;
-            }
-        });
-        
-        // BUG FIX & REFACTOR: A more stable way to do elitism and crossover.
-        console.log("Finding top parents for expert crossover...");
-        agents.sort((a, b) => b.finalFitness - a.finalFitness);
-        const parentA = agents[0];
-        const parentB = agents.length > 1 ? agents[1] : agents[0];
-        
-        const parentADNA = parentA.getDNA().expertDNA;
-        const parentBDNA = parentB.getDNA().expertDNA;
-
-        console.log(`Top parents: Agent ${parentA.game.id} (Fitness: ${parentA.finalFitness}) & Agent ${parentB.game.id} (Fitness: ${parentB.finalFitness})`);
-        
-        generateInstancesWithCrossover(parentADNA, parentBDNA, newGlobalGatingDNA);
-        setTimeout(startAll, 500);
-    }
-    
-    function crossover(dnaA, dnaB) {
-        const childDNA = JSON.parse(JSON.stringify(dnaA));
-        if (!dnaB) return childDNA; // Safety check
-        const experts = Object.keys(childDNA.expertDna);
-        for(const expert of experts) {
-            if(dnaB.expertDna[expert] && Math.random() < 0.5) {
-                childDNA.expertDna[expert] = dnaB.expertDna[expert];
-            }
-        }
-        return childDNA;
-    }
-
-    function generateInstancesWithCrossover(parentADNA, parentBDNA, globalGatingDNA) {
-        updateGeneration(false);
         const instancesContainer = document.getElementById('game-instances-container');
         const numInstancesInput = document.getElementById('num-instances');
         const seedDisplay = document.getElementById('seed-display');
@@ -952,13 +850,18 @@
             if (!includeHuman || i > 1) {
                 let childExpertDNA;
                 let shouldMutate = true;
-                if (i === 1) { 
-                     childExpertDNA = parentADNA;
-                     shouldMutate = false; 
-                } else if (i === 2 && parentADNA !== parentBDNA) {
-                     childExpertDNA = parentBDNA;
+
+                if(isNewPopulation || !parentADNA) {
+                    childExpertDNA = null; // First generation is random
                 } else {
-                    childExpertDNA = crossover(parentADNA, parentBDNA);
+                    if (i === 1) { 
+                         childExpertDNA = parentADNA;
+                         shouldMutate = false; 
+                    } else if (i === 2 && parentBDNA) {
+                         childExpertDNA = parentBDNA;
+                    } else {
+                        childExpertDNA = crossover(parentADNA, parentBDNA || parentADNA);
+                    }
                 }
 
                 let agent = new Agent(game, childExpertDNA, globalGatingDNA, shouldMutate);
@@ -966,6 +869,7 @@
                 game.agent = agent; 
             }
         }
+
         if (includeHuman && gameInstances.length > 0) {
             const humanPlayer = gameInstances[0];
             humanPlayerKeyListeners = { down: (e) => humanPlayer.handleKeyDown(e), up: (e) => humanPlayer.handleKeyUp(e) };
@@ -975,6 +879,72 @@
         }
     }
 
+    function startAll() { gameInstances.forEach(game => game.start()); if (document.getElementById('ai-enabled-checkbox').checked) { agents.forEach(agent => agent.start()); } }
+    function stopAll() { gameInstances.forEach(game => game.stop()); agents.forEach(agent => agent.stop()); }
+    
+    // ADVANCEMENT: A more stable evolution model that preserves the best agent's full DNA
+    function evolveAndFederate() {
+        if (agents.length === 0) return;
+
+        let totalFitness = 0;
+        agents.forEach(agent => {
+            agent.finalFitness = agent.calculateFitness(agent.game);
+            totalFitness += agent.finalFitness;
+        });
+
+        if (totalFitness === 0) {
+            console.log("Total fitness is 0. Resetting with a new random population.");
+            generateInstances(null, null, null, true);
+            setTimeout(startAll, 500);
+            return;
+        }
+
+        const firstAgent = agents[0];
+        const newGlobalGatingDNA = firstAgent.getInitialGatingDNA();
+        newGlobalGatingDNA.gatingNetworkDNA = Network.getDNA(firstAgent.gatingNetwork);
+        newGlobalGatingDNA.gatingNetworkDNA.layers.forEach(layer => {
+            if(layer.weights) layer.weights.fill(0);
+            if(layer.biases) layer.biases.fill(0);
+        });
+        
+        agents.forEach(agent => {
+            const weight = agent.finalFitness / totalFitness;
+            const fullDNA = agent.getDNA();
+            const localGatingDNA = fullDNA.gatingDNA.gatingNetworkDNA;
+            for(let i = 0; i < newGlobalGatingDNA.exploration_biases.length; i++) newGlobalGatingDNA.exploration_biases[i] += (fullDNA.gatingDNA.exploration_biases[i] || 0) * weight;
+            for(let l=0; l < localGatingDNA.layers.length; l++){
+                const localLayer = localGatingDNA.layers[l];
+                const globalLayer = newGlobalGatingDNA.gatingNetworkDNA.layers[l];
+                if(localLayer.weights) for (let i = 0; i < localLayer.weights.length; i++) globalLayer.weights[i] += (localLayer.weights[i] || 0) * weight;
+                if(localLayer.biases) for (let i = 0; i < localLayer.biases.length; i++) globalLayer.biases[i] += (localLayer.biases[i] || 0) * weight;
+            }
+        });
+        
+        console.log("Finding top parents for expert crossover...");
+        agents.sort((a, b) => b.finalFitness - a.finalFitness);
+        const parentA = agents[0];
+        const parentB = agents.length > 1 ? agents[1] : agents[0];
+        
+        const parentADNA = parentA.getDNA().expertDNA;
+        const parentBDNA = parentB.getDNA().expertDNA;
+        
+        console.log(`Top parents: Agent ${parentA.game.id} (Fitness: ${parentA.finalFitness}) & Agent ${parentB.game.id} (Fitness: ${parentB.finalFitness})`);
+        
+        generateInstances(parentADNA, parentBDNA, newGlobalGatingDNA, false);
+        setTimeout(startAll, 500);
+    }
+    
+    function crossover(dnaA, dnaB) {
+        const childDNA = JSON.parse(JSON.stringify(dnaA));
+        if (!dnaB) return childDNA;
+        const experts = Object.keys(childDNA.expertDna);
+        for(const expert of experts) {
+            if(dnaB.expertDna[expert] && Math.random() < 0.5) {
+                childDNA.expertDna[expert] = dnaB.expertDna[expert];
+            }
+        }
+        return childDNA;
+    }
 
     function checkAllGameOver() {
         const agentGames = gameInstances.filter(g => g.agent);
@@ -1001,7 +971,8 @@
         try {
             if (!parentInput.value) { alert("Parent DNA input is empty."); return; }
             const parentFullDNA = JSON.parse(parentInput.value);
-            generateInstances(parentFullDNA.expertDNA, parentFullDNA.gatingDNA, false);
+            // Call with parent A and B as the same to ensure crossover works from a single parent
+            generateInstances(parentFullDNA.expertDNA, parentFullDNA.expertDNA, parentFullDNA.gatingDNA, false);
         } catch (e) {
             alert("Invalid JSON in parent DNA input."); console.error("Error parsing parent DNA:", e);
         }
@@ -1047,12 +1018,13 @@
     
     document.getElementById('start-all-btn').addEventListener('click', startAll);
     document.getElementById('stop-all-btn').addEventListener('click', stopAll);
-    document.getElementById('generate-instances-btn').addEventListener('click', () => generateInstances(null, null, true));
+    document.getElementById('generate-instances-btn').addEventListener('click', () => generateInstances(null, null, null, true));
     document.getElementById('extract-dna-btn').addEventListener('click', extractBestAgentDNA);
     document.getElementById('permutate-btn').addEventListener('click', generateFromParent);
     
+    // BUG FIX: The initial call to generateInstances now uses the correct signature.
     window.onload = () => {
-        generateInstances(null, null, true);
+        generateInstances(null, null, null, true);
         initializeChart();
     };
     </script>
